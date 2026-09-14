@@ -1,4 +1,4 @@
-import { requireAuth } from '@/lib/auth/session';
+﻿import { requireAuth } from '@/lib/auth/session';
 import { apiSuccess, apiError } from '@/lib/api-helpers';
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
@@ -35,6 +35,9 @@ export async function GET(req: Request) {
     if (filter === 'edited') {
       where.isEdited = true;
     }
+    if (filter === 'media') {
+      where.messageType = { in: ['PHOTO', 'VIDEO', 'VOICE', 'VIDEO_NOTE', 'DOCUMENT', 'AUDIO', 'ANIMATION', 'STICKER'] };
+    }
     if (filter === 'photo') {
       where.messageType = 'PHOTO';
     }
@@ -46,6 +49,9 @@ export async function GET(req: Request) {
     }
     if (filter === 'document') {
       where.messageType = 'DOCUMENT';
+    }
+    if (filter === 'audio') {
+      where.messageType = 'AUDIO';
     }
 
     const messages = await prisma.message.findMany({

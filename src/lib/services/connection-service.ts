@@ -1,9 +1,14 @@
-// ============================================================
+﻿// ============================================================
 // SerkoGram — Connection Service (Adapter Pattern)
 // Provides a unified interface for Business and Chat Automation
 // ============================================================
 
 import { prisma } from '@/lib/db';
+import {
+  saveMessage,
+  processEditedMessage,
+  processDeletedMessages,
+} from './message-service';
 import type { BusinessConnection, Chat, ConnectionStatus } from '@prisma/client';
 
 // ============================================================
@@ -20,8 +25,11 @@ export interface ConnectionAdapter {
   getConnection(userId: string): Promise<BusinessConnection | null>;
   getChats(connectionId: string): Promise<Chat[]>;
   getPermissions(connectionId: string): Promise<ConnectionPermission[]>;
-  disconnect(connectionId: string): Promise<void>;
   getStatus(connectionId: string): Promise<ConnectionStatus>;
+  disconnect(connectionId: string): Promise<void>;
+  processMessage(chatId: string, messageData: any): Promise<any>;
+  processEdit(chatId: string, editData: any): Promise<void>;
+  processDelete(chatId: string, messageIds: number[]): Promise<void>;
 }
 
 // ============================================================
@@ -54,12 +62,12 @@ export class BusinessAdapter implements ConnectionAdapter {
       {
         key: 'read_messages',
         label: 'Чтение сообщений',
-        granted: true, // Business connections always receive messages
+        granted: true,
       },
       {
         key: 'receive_deletions',
         label: 'Получение удалений',
-        granted: true, // Business connections always receive deletion updates
+        granted: true,
       },
       {
         key: 'can_reply',
@@ -74,6 +82,13 @@ export class BusinessAdapter implements ConnectionAdapter {
     ];
   }
 
+  async getStatus(connectionId: string): Promise<ConnectionStatus> {
+    const conn = await prisma.businessConnection.findUnique({
+      where: { id: connectionId },
+    });
+    return conn?.status ?? 'DISCONNECTED';
+  }
+
   async disconnect(connectionId: string): Promise<void> {
     await prisma.businessConnection.update({
       where: { id: connectionId },
@@ -85,27 +100,33 @@ export class BusinessAdapter implements ConnectionAdapter {
     });
   }
 
-  async getStatus(connectionId: string): Promise<ConnectionStatus> {
-    const conn = await prisma.businessConnection.findUnique({
-      where: { id: connectionId },
-    });
-    return conn?.status ?? 'DISCONNECTED';
+  async processMessage(chatId: string, messageData: any): Promise<any> {
+    return saveMessage({ ...messageData, chatId });
+  }
+
+  async processEdit(chatId: string, editData: any): Promise<void> {
+    await processEditedMessage({ ...editData, chatId });
+  }
+
+  async processDelete(chatId: string, messageIds: number[]): Promise<void> {
+    await processDeletedMessages(chatId, messageIds, new Date());
   }
 }
 
 // ============================================================
-// Chat Automation Adapter (Extensible Stub)
+// Chat Automation Adapter (Extensible Architecture)
 // ============================================================
 
 /**
  * Chat Automation adapter.
  *
  * This adapter represents an extensible architecture point for future
- * Telegram Chat Automation capabilities. Currently, the full Chat Automation
- * functionality is not available through the standard Telegram Bot API.
+ * Telegram Chat Automation capabilities. Currently, general user-level
+ * Chat Automation is handled natively through Telegram Business Bot Connection.
  *
- * The adapter is designed to be easily extended when official API support
- * becomes available, without requiring changes to the rest of the system.
+ * The adapter implements the uniform ConnectionAdapter interface so that when
+ * extended Telegram Bot API capabilities are introduced, no core refactoring
+ * is necessary.
  */
 export class ChatAutomationAdapter implements ConnectionAdapter {
   async getConnection(userId: string): Promise<BusinessConnection | null> {
@@ -123,7 +144,6 @@ export class ChatAutomationAdapter implements ConnectionAdapter {
   }
 
   async getPermissions(_connectionId: string): Promise<ConnectionPermission[]> {
-    // Chat Automation permissions are not yet fully supported
     return [
       {
         key: 'read_messages',
@@ -143,6 +163,13 @@ export class ChatAutomationAdapter implements ConnectionAdapter {
     ];
   }
 
+  async getStatus(connectionId: string): Promise<ConnectionStatus> {
+    const conn = await prisma.businessConnection.findUnique({
+      where: { id: connectionId },
+    });
+    return conn?.status ?? 'DISCONNECTED';
+  }
+
   async disconnect(connectionId: string): Promise<void> {
     await prisma.businessConnection.update({
       where: { id: connectionId },
@@ -154,11 +181,16 @@ export class ChatAutomationAdapter implements ConnectionAdapter {
     });
   }
 
-  async getStatus(connectionId: string): Promise<ConnectionStatus> {
-    const conn = await prisma.businessConnection.findUnique({
-      where: { id: connectionId },
-    });
-    return conn?.status ?? 'DISCONNECTED';
+  async processMessage(chatId: string, messageData: any): Promise<any> {
+    return saveMessage({ ...messageData, chatId });
+  }
+
+  async processEdit(chatId: string, editData: any): Promise<void> {
+    await processEditedMessage({ ...editData, chatId });
+  }
+
+  async processDelete(chatId: string, messageIds: number[]): Promise<void> {
+    await processDeletedMessages(chatId, messageIds, new Date());
   }
 }
 

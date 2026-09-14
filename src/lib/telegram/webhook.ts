@@ -12,6 +12,8 @@ import {
 } from '@/lib/services/message-service';
 import { downloadAndStoreMedia } from '@/lib/services/media-service';
 import { logAudit } from '@/lib/services/audit-service';
+import { parseBotCommand } from './parser';
+import { executeCommand } from './handlers';
 import type { MessageType } from '@prisma/client';
 
 // Grammy types
@@ -21,39 +23,50 @@ import type { Update, Message as TgMessage } from 'grammy/types';
  * Process a Telegram update.
  * Handles: business_connection, business_message, edited_business_message,
  * deleted_business_messages, and bot commands.
+ *
+ * NOTE: If processing fails, this function THROWS so the HTTP handler
+ * returns 500 and Telegram retries the update.
+ * ProcessedUpdate is created ONLY upon successful processing.
  */
 export async function processUpdate(update: Update): Promise<void> {
-  // Idempotency check
-  const exists = await prisma.processedUpdate.findUnique({
-    where: { updateId: update.update_id },
-  });
-  if (exists) return;
+  const hasDb = Boolean(process.env.DATABASE_URL);
 
-  try {
-    if (update.business_connection) {
-      await handleBusinessConnection(update);
-    } else if (update.business_message) {
-      await handleBusinessMessage(update.business_message, false);
-    } else if (update.edited_business_message) {
-      await handleEditedBusinessMessage(update.edited_business_message);
-    } else if (update.deleted_business_messages) {
-      await handleDeletedBusinessMessages(update);
-    } else if (update.message) {
-      await handleBotMessage(update.message);
-    } else if (update.callback_query) {
-      await handleCallbackQuery(update);
+  // Idempotency check: if already processed, return immediately
+  if (hasDb) {
+    try {
+      const exists = await prisma.processedUpdate.findUnique({
+        where: { updateId: update.update_id },
+      });
+      if (exists) return;
+    } catch (err) {
+      console.warn('[Webhook] DB lookup warning:', err);
     }
+  }
 
-    // Mark update as processed
-    await prisma.processedUpdate.create({
-      data: { updateId: update.update_id },
-    });
-  } catch (error) {
-    console.error('[Webhook] Error processing update:', update.update_id, error);
-    // Still mark as processed to avoid infinite retries
-    await prisma.processedUpdate.create({
-      data: { updateId: update.update_id },
-    }).catch(() => {});
+  // Process update handlers
+  if (update.business_connection) {
+    await handleBusinessConnection(update);
+  } else if (update.business_message) {
+    await handleBusinessMessage(update.business_message, false);
+  } else if (update.edited_business_message) {
+    await handleEditedBusinessMessage(update.edited_business_message);
+  } else if (update.deleted_business_messages) {
+    await handleDeletedBusinessMessages(update);
+  } else if (update.message) {
+    await handleBotMessage(update.message);
+  } else if (update.callback_query) {
+    await handleCallbackQuery(update);
+  }
+
+  // Mark update as processed ONLY after successful completion
+  if (hasDb) {
+    try {
+      await prisma.processedUpdate.create({
+        data: { updateId: update.update_id },
+      });
+    } catch (err) {
+      console.warn('[Webhook] Failed to mark update as processed:', err);
+    }
   }
 }
 
@@ -104,9 +117,23 @@ async function handleBusinessConnection(update: Update): Promise<void> {
       },
     });
 
+    // Ensure default settings exist
+    await prisma.userSettings.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id },
+      update: {},
+    });
+
+    await prisma.privacySettings.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id },
+      update: {},
+    });
+
     await logAudit('CONNECTION_CREATED', user.id, {
-      connectionId: bc.id,
-      type: 'BUSINESS',
+      canReply,
+      date: bc.date,
+      telegramConnectionId: bc.id,
     });
   } else {
     // Disconnect
@@ -115,29 +142,28 @@ async function handleBusinessConnection(update: Update): Promise<void> {
       data: {
         status: 'DISCONNECTED',
         isEnabled: false,
-        disconnectedAt: new Date(),
+        disconnectedAt: new Date(bc.date * 1000),
       },
     });
 
     await logAudit('CONNECTION_DELETED', user.id, {
-      connectionId: bc.id,
+      date: bc.date,
+      telegramConnectionId: bc.id,
     });
   }
 }
 
 // ============================================================
-// Business Message Handler
+// Business Message Handler (Save / Ingest)
 // ============================================================
 
-async function handleBusinessMessage(
-  msg: TgMessage,
-  _isEdit: boolean
-): Promise<void> {
+async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise<void> {
   if (!msg.business_connection_id) return;
 
-  // Find the connection
+  // Find the business connection WITH owner user details
   const connection = await prisma.businessConnection.findUnique({
     where: { telegramConnectionId: msg.business_connection_id },
+    include: { user: true },
   });
   if (!connection || connection.status !== 'ACTIVE') return;
 
@@ -193,8 +219,12 @@ async function handleBusinessMessage(
   // Determine message type
   const messageType = detectMessageType(msg);
 
-  // Determine if outgoing (sent by the business user)
-  const isOutgoing = msg.from?.id === Number(connection.userId) || msg.is_from_offline === true;
+  // RELIABLE OUTGOING DETECTION:
+  // Compare real Telegram user ID of sender with the Telegram user ID of the business owner!
+  const isOutgoing =
+    (msg.from && connection.user?.telegramId
+      ? BigInt(msg.from.id) === connection.user.telegramId
+      : false) || msg.is_from_offline === true;
 
   // Save message
   const saved = await saveMessage({
@@ -211,13 +241,11 @@ async function handleBusinessMessage(
     text: msg.text,
     caption: msg.caption,
     replyToMessageId: msg.reply_to_message?.message_id,
-    forwardFromName: (msg as any).forward_origin?.sender_user_name ?? (msg as any).forward_sender_name,
     telegramDate: new Date(msg.date * 1000),
-    rawData: JSON.parse(JSON.stringify(msg)),
   });
 
-  // Download and store media if applicable
-  if (settings?.saveMedia !== false) {
+  // Process media asynchronously if user settings allow
+  if (!settings || settings.saveMedia) {
     await processMediaFromMessage(msg, saved.id);
   }
 }
@@ -285,83 +313,17 @@ async function handleDeletedBusinessMessages(update: Update): Promise<void> {
 }
 
 // ============================================================
-// Bot Direct Message Handler (commands)
+// Bot Direct Message Handler (Commands via parser & handlers)
 // ============================================================
 
 async function handleBotMessage(msg: TgMessage): Promise<void> {
-  if (!msg.text || !msg.from) return;
+  if (!msg.text) return;
 
-  const bot = getBot();
-  const text = msg.text.trim();
-  const chatId = msg.chat.id;
+  const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'SerkoGram_bot';
+  const parsed = parseBotCommand(msg.text, botUsername);
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
-
-  if (text === '/start' || text.startsWith('/start ')) {
-    await bot.api.sendMessage(chatId, [
-      '🟣 *SerkoGram*',
-      '',
-      'Добро пожаловать\\!',
-      '',
-      'SerkoGram помогает сохранять и организовывать историю сообщений подключённого Telegram\\-аккаунта\\.',
-      '',
-      '• Автоматическое сохранение сообщений',
-      '• Архив удалённых и изменённых сообщений',
-      '• Поиск по истории',
-      '• Хранение медиафайлов',
-    ].join('\n'), {
-      parse_mode: 'MarkdownV2',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '📱 Открыть SerkoGram', web_app: { url: appUrl } }],
-          [{ text: '🔗 Подключить Telegram', callback_data: 'connect' }],
-          [{ text: '📖 Инструкция', callback_data: 'instructions' }],
-          [{ text: '❓ FAQ', callback_data: 'faq' }],
-          [{ text: '💬 Поддержка', callback_data: 'support' }],
-        ],
-      },
-    });
-  } else if (text === '/help') {
-    await bot.api.sendMessage(chatId, [
-      '📋 *Команды SerkoGram*',
-      '',
-      '/start — Главное меню',
-      '/help — Список команд',
-      '/info — О SerkoGram',
-      '/archive — Открыть архив',
-      '/deleted — Удалённые сообщения',
-      '/media — Медиафайлы',
-      '/search — Поиск',
-      '/settings — Настройки',
-    ].join('\n'), { parse_mode: 'Markdown' });
-  } else if (text === '/info') {
-    await bot.api.sendMessage(chatId, [
-      '🟣 *SerkoGram*',
-      '',
-      'Персональный архив сообщений Telegram с отслеживанием удалённых и изменённых сообщений.',
-      '',
-      '• Подключение через Telegram Business',
-      '• Сохранение всех типов сообщений',
-      '• Отслеживание удалений и изменений',
-      '• Безопасное хранение медиафайлов',
-      '• Поиск по архиву',
-    ].join('\n'), { parse_mode: 'Markdown' });
-  } else if (['/archive', '/deleted', '/media', '/search', '/settings'].includes(text)) {
-    const routes: Record<string, string> = {
-      '/archive': '/archive',
-      '/deleted': '/archive?filter=deleted',
-      '/media': '/archive?filter=photo',
-      '/search': '/archive?search=true',
-      '/settings': '/settings',
-    };
-    const route = routes[text] ?? '/';
-    await bot.api.sendMessage(chatId, '📱 Откройте SerkoGram для доступа к этому разделу:', {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '📱 Открыть', web_app: { url: `${appUrl}${route}` } }],
-        ],
-      },
-    });
+  if (parsed.isCommand) {
+    await executeCommand(msg, parsed);
   }
 }
 
@@ -379,47 +341,101 @@ async function handleCallbackQuery(update: Update): Promise<void> {
 
   await bot.api.answerCallbackQuery(query.id);
 
+  if (query.data.startsWith('rps:')) {
+    const userChoice = query.data.split(':')[1];
+    const choices = ['камень', 'ножницы', 'бумага'];
+    const emojis: Record<string, string> = { камень: '🪨 Камень', ножницы: '✂️ Ножницы', бумага: '📄 Бумага' };
+    const botChoice = choices[Math.floor(Math.random() * choices.length)];
+
+    let outcome = 'Ничья! 🤝';
+    if (
+      (userChoice === 'камень' && botChoice === 'ножницы') ||
+      (userChoice === 'ножницы' && botChoice === 'бумага') ||
+      (userChoice === 'бумага' && botChoice === 'камень')
+    ) {
+      outcome = 'Вы победили! 🎉';
+    } else if (userChoice !== botChoice) {
+      outcome = 'Бот победил! 🤖';
+    }
+
+    await bot.api.sendMessage(
+      chatId,
+      `🎮 <b>Камень, Ножницы, Бумага</b>\n\n` +
+        `Ваш выбор: <b>${emojis[userChoice]}</b>\n` +
+        `Выбор бота: <b>${emojis[botChoice]}</b>\n\n` +
+        `Результат: <b>${outcome}</b>`,
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
+
+  if (query.data.startsWith('ttt:')) {
+    const cell = query.data.split(':')[1];
+    await bot.api.sendMessage(
+      chatId,
+      `❌ Вы поставили крестик на клетку #${Number(cell) + 1}. Бот делает ответный ход ⭕...`,
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
+
   switch (query.data) {
     case 'connect':
-      await bot.api.sendMessage(chatId, [
-        '🔗 *Подключение Telegram Business*',
-        '',
-        '1\\. Откройте Telegram → Настройки',
-        '2\\. Telegram Business → Чат\\-боты',
-        '3\\. Выберите @' + (process.env.TELEGRAM_BOT_USERNAME ?? 'SerkoGramBot'),
-        '4\\. Настройте разрешения',
-        '',
-        'После подключения SerkoGram начнёт сохранять сообщения автоматически\\.',
-      ].join('\n'), { parse_mode: 'MarkdownV2' });
+      await bot.api.sendMessage(
+        chatId,
+        `🔗 <b>Подключение Telegram Business</b>\n\n` +
+          `1. Откройте Telegram → <b>Настройки</b>\n` +
+          `2. <b>Telegram Business</b> → <b>Чат-боты</b>\n` +
+          `3. Выберите @${process.env.TELEGRAM_BOT_USERNAME ?? 'SerkoGram_bot'}\n` +
+          `4. Настройте разрешения и выберите чаты\n\n` +
+          `После подключения SerkoGram начнёт автоматически сохранять переписку.`,
+        { parse_mode: 'HTML' }
+      );
+      break;
+
+    case 'commands':
+      await bot.api.sendMessage(
+        chatId,
+        `📋 <b>Каталог команд SerkoGram</b>\n\n` +
+          `Нажмите кнопку ниже, чтобы открыть полный каталог команд с примерами и фильтрами:`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: appUrl
+            ? {
+                inline_keyboard: [[{ text: '📱 Открыть каталог команд', web_app: { url: `${appUrl}/commands` } }]],
+              }
+            : undefined,
+        }
+      );
       break;
 
     case 'instructions':
-      await bot.api.sendMessage(chatId, '📖 Откройте инструкцию в SerkoGram:', {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '📖 Инструкция', web_app: { url: `${appUrl}/instructions` } }],
-          ],
-        },
+      await bot.api.sendMessage(chatId, '📖 Откройте пошаговую инструкцию:', {
+        reply_markup: appUrl
+          ? {
+              inline_keyboard: [[{ text: '📖 Инструкция', web_app: { url: `${appUrl}/instructions` } }]],
+            }
+          : undefined,
       });
       break;
 
     case 'faq':
-      await bot.api.sendMessage(chatId, '❓ Откройте FAQ в SerkoGram:', {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '❓ FAQ', web_app: { url: `${appUrl}/faq` } }],
-          ],
-        },
+      await bot.api.sendMessage(chatId, '❓ Ответы на частые вопросы:', {
+        reply_markup: appUrl
+          ? {
+              inline_keyboard: [[{ text: '❓ FAQ', web_app: { url: `${appUrl}/faq` } }]],
+            }
+          : undefined,
       });
       break;
 
     case 'support':
-      await bot.api.sendMessage(chatId, '💬 Откройте поддержку в SerkoGram:', {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '💬 Поддержка', web_app: { url: `${appUrl}/support` } }],
-          ],
-        },
+      await bot.api.sendMessage(chatId, '💬 Служба поддержки SerkoGram:', {
+        reply_markup: appUrl
+          ? {
+              inline_keyboard: [[{ text: '💬 Поддержка', web_app: { url: `${appUrl}/support` } }]],
+            }
+          : undefined,
       });
       break;
   }

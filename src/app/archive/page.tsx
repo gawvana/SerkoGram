@@ -18,6 +18,7 @@ const FILTERS = [
   { key: 'all', label: 'Все' },
   { key: 'deleted', label: 'Удалённые' },
   { key: 'edited', label: 'Изменённые' },
+  { key: 'media', label: 'Все медиа' },
   { key: 'photo', label: 'Фото' },
   { key: 'video', label: 'Видео' },
   { key: 'voice', label: 'Голосовые' },
