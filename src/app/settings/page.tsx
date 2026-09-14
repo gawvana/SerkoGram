@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
@@ -32,6 +33,7 @@ interface PrivacySettings {
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [confirmModal, setConfirmModal] = useState<{
     action: 'archive' | 'connection' | 'account' | null;
@@ -114,7 +116,7 @@ export default function SettingsPage() {
       queryClient.invalidateQueries();
       showToast(data.message || 'Действие выполнено');
       if (confirmModal.action === 'account') {
-        window.location.href = '/';
+        router.push('/');
       }
     },
     onError: () => {

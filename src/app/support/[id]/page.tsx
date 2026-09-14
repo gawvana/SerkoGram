@@ -31,11 +31,12 @@ export default function TicketDetailPage({
   const queryClient = useQueryClient();
   const [replyText, setReplyText] = useState('');
 
-  const { data: ticket, isLoading, refetch, isRefetching } = useQuery<TicketDetail>({
+  const { data: ticket, isLoading, isError, refetch, isRefetching } = useQuery<TicketDetail>({
     queryKey: ['ticket', ticketId],
     queryFn: async () => {
       const res = await fetch(`/api/support/tickets/${ticketId}`, { credentials: 'include' });
       const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Ошибка загрузки');
       return json.data;
     },
   });
@@ -98,6 +99,17 @@ export default function TicketDetailPage({
           <div className="space-y-3 py-6">
             <div className="w-56 h-12 skeleton rounded-2xl" />
             <div className="w-64 h-16 skeleton rounded-2xl ml-auto" />
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center h-full py-16 text-center text-sg-text-muted space-y-3">
+            <p className="text-sm text-red-400">Не удалось загрузить данные тикета</p>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="px-4 py-2 bg-sg-surface-2 hover:bg-sg-surface-3 rounded-xl text-xs text-white border border-sg-border transition-colors"
+            >
+              Повторить попытку
+            </button>
           </div>
         ) : !ticket?.messages || ticket.messages.length === 0 ? (
           <p className="text-center text-xs text-sg-text-muted py-10">Нет сообщений</p>

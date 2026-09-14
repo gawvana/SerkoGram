@@ -36,6 +36,17 @@ interface SaveEditInput {
  * Uses upsert to handle idempotent processing.
  */
 export async function saveMessage(input: SaveMessageInput): Promise<Message> {
+  const existing = await prisma.message.findUnique({
+    where: {
+      chatId_telegramMessageId: {
+        chatId: input.chatId,
+        telegramMessageId: input.telegramMessageId,
+      },
+    },
+  });
+
+  const isTombstone = existing && (existing.rawData as any)?.tombstone === true;
+
   const message = await prisma.message.upsert({
     where: {
       chatId_telegramMessageId: {
@@ -60,22 +71,46 @@ export async function saveMessage(input: SaveMessageInput): Promise<Message> {
       rawData: input.rawData,
     },
     update: {
-      // On duplicate — just update metadata, don't overwrite content
+      senderTelegramId: input.senderTelegramId,
       senderName: input.senderName,
       senderUsername: input.senderUsername,
+      isOutgoing: input.isOutgoing,
+      messageType: input.messageType,
+      text: input.text,
+      caption: input.caption,
+      replyToMessageId: input.replyToMessageId,
+      forwardFromName: input.forwardFromName,
+      telegramDate: input.telegramDate,
       rawData: input.rawData,
     },
   });
 
-  // Update chat counters
-  await prisma.chat.update({
-    where: { id: input.chatId },
-    data: {
-      totalMessages: { increment: 1 },
-      lastMessageAt: input.telegramDate,
-      lastMessagePreview: input.text?.substring(0, 100) ?? input.caption?.substring(0, 100) ?? `[${input.messageType}]`,
-    },
-  });
+  // Only increment chat totalMessages counter if this is a newly seen message (not duplicate or tombstone)
+  if (!existing || isTombstone) {
+    await prisma.chat.update({
+      where: { id: input.chatId },
+      data: {
+        totalMessages: { increment: 1 },
+        lastMessageAt: input.telegramDate,
+        lastMessagePreview:
+          input.text?.substring(0, 100) ??
+          input.caption?.substring(0, 100) ??
+          `[${input.messageType}]`,
+      },
+    });
+  } else {
+    // Update preview & lastMessageAt
+    await prisma.chat.update({
+      where: { id: input.chatId },
+      data: {
+        lastMessageAt: input.telegramDate,
+        lastMessagePreview:
+          input.text?.substring(0, 100) ??
+          input.caption?.substring(0, 100) ??
+          `[${input.messageType}]`,
+      },
+    });
+  }
 
   return message;
 }
@@ -98,9 +133,10 @@ export async function processEditedMessage(input: SaveEditInput): Promise<Messag
 
   if (!existing) return null;
 
+  // Increment edit version
   const nextVersion = (existing.versions[0]?.version ?? 0) + 1;
 
-  // Save current content as a version before updating
+  // Save previous version
   await prisma.messageVersion.create({
     data: {
       messageId: existing.id,
@@ -111,7 +147,7 @@ export async function processEditedMessage(input: SaveEditInput): Promise<Messag
     },
   });
 
-  // Update the message with new content
+  // Update current message
   const updated = await prisma.message.update({
     where: { id: existing.id },
     data: {
@@ -122,11 +158,13 @@ export async function processEditedMessage(input: SaveEditInput): Promise<Messag
     },
   });
 
-  // Update chat counter
-  await prisma.chat.update({
-    where: { id: input.chatId },
-    data: { editedMessages: { increment: 1 } },
-  });
+  // Update chat counter only on first edit
+  if (!existing.isEdited) {
+    await prisma.chat.update({
+      where: { id: input.chatId },
+      data: { editedMessages: { increment: 1 } },
+    });
+  }
 
   return updated;
 }
@@ -152,7 +190,38 @@ export async function processDeletedMessages(
       },
     });
 
-    if (!message) continue;
+    if (!message) {
+      // Out-of-order deletion: create tombstone message so deletion isn't lost
+      const tombstone = await prisma.message.create({
+        data: {
+          chatId,
+          telegramMessageId: tmId,
+          isOutgoing: false,
+          messageType: 'UNKNOWN',
+          isDeleted: true,
+          deletedAt,
+          telegramDate: deletedAt,
+          rawData: { tombstone: true, deletedAt },
+        },
+      });
+
+      await prisma.messageDeletion.upsert({
+        where: { messageId: tombstone.id },
+        create: {
+          messageId: tombstone.id,
+          deletedAt,
+        },
+        update: {
+          deletedAt,
+        },
+      });
+
+      count++;
+      continue;
+    }
+
+    // Skip if already marked as deleted
+    if (message.isDeleted) continue;
 
     await prisma.$transaction([
       prisma.message.update({

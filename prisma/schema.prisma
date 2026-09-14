@@ -256,7 +256,7 @@ model Message {
   @@index([isEdited])
   @@index([messageType])
   @@index([businessConnectionId])
-  @@index([text(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([chatId, isDeleted, telegramDate])
   @@map("messages")
 }
 

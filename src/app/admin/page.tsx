@@ -38,6 +38,12 @@ interface AdminData {
 export default function AdminDashboardPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'tickets' | 'users' | 'audit'>('tickets');
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
 
   // Stats query
   const { data: adminData, isLoading: statsLoading, refetch, isRefetching } = useQuery<AdminData>({
@@ -50,7 +56,12 @@ export default function AdminDashboardPage() {
   });
 
   // Tickets query
-  const { data: ticketsData, isLoading: ticketsLoading } = useQuery({
+  const {
+    data: ticketsData,
+    isLoading: ticketsLoading,
+    isError: ticketsError,
+    refetch: refetchTickets,
+  } = useQuery({
     queryKey: ['adminTickets'],
     queryFn: async () => {
       const res = await fetch('/api/admin/tickets', { credentials: 'include' });
@@ -61,7 +72,12 @@ export default function AdminDashboardPage() {
   });
 
   // Users query
-  const { data: usersData, isLoading: usersLoading } = useQuery({
+  const {
+    data: usersData,
+    isLoading: usersLoading,
+    isError: usersError,
+    refetch: refetchUsers,
+  } = useQuery({
     queryKey: ['adminUsers'],
     queryFn: async () => {
       const res = await fetch('/api/admin/users', { credentials: 'include' });
@@ -72,7 +88,12 @@ export default function AdminDashboardPage() {
   });
 
   // Audit query
-  const { data: auditData, isLoading: auditLoading } = useQuery({
+  const {
+    data: auditData,
+    isLoading: auditLoading,
+    isError: auditError,
+    refetch: refetchAudit,
+  } = useQuery({
     queryKey: ['adminAudit'],
     queryFn: async () => {
       const res = await fetch('/api/admin/audit', { credentials: 'include' });
@@ -94,8 +115,12 @@ export default function AdminDashboardPage() {
       return res.json();
     },
     onSuccess: () => {
+      showToast('Статус тикета обновлён');
       queryClient.invalidateQueries({ queryKey: ['adminTickets'] });
       queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
+    },
+    onError: () => {
+      showToast('Не удалось обновить статус');
     },
   });
 
@@ -119,6 +144,14 @@ export default function AdminDashboardPage() {
       />
 
       <div className="p-4 space-y-4">
+        {/* Toast */}
+        {toast && (
+          <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-sg-surface border border-sg-purple text-white px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-lg animate-fade-in">
+            <CheckCircle2 className="w-3.5 h-3.5 text-sg-purple" />
+            <span>{toast}</span>
+          </div>
+        )}
+
         {/* System Health */}
         <div className="bg-sg-surface p-4 rounded-2xl border border-sg-border flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -223,7 +256,18 @@ export default function AdminDashboardPage() {
                   <div className="h-16 skeleton rounded-xl" />
                   <div className="h-16 skeleton rounded-xl" />
                 </div>
-              ) : ticketsData.length === 0 ? (
+              ) : ticketsError ? (
+                <div className="p-4 bg-sg-surface rounded-xl border border-sg-border text-center space-y-2">
+                  <p className="text-xs text-red-400">Ошибка загрузки тикетов</p>
+                  <button
+                    type="button"
+                    onClick={() => refetchTickets()}
+                    className="px-3 py-1.5 bg-sg-surface-2 hover:bg-sg-surface-3 rounded-lg text-2xs text-white"
+                  >
+                    Повторить
+                  </button>
+                </div>
+              ) : !ticketsData || ticketsData.length === 0 ? (
                 <p className="text-center text-xs text-sg-text-muted py-8">Нет обращений</p>
               ) : (
                 ticketsData.map((t: any) => (
@@ -273,7 +317,18 @@ export default function AdminDashboardPage() {
                   <div className="h-12 skeleton rounded-xl" />
                   <div className="h-12 skeleton rounded-xl" />
                 </div>
-              ) : usersData.length === 0 ? (
+              ) : usersError ? (
+                <div className="p-4 bg-sg-surface rounded-xl border border-sg-border text-center space-y-2">
+                  <p className="text-xs text-red-400">Ошибка загрузки пользователей</p>
+                  <button
+                    type="button"
+                    onClick={() => refetchUsers()}
+                    className="px-3 py-1.5 bg-sg-surface-2 hover:bg-sg-surface-3 rounded-lg text-2xs text-white"
+                  >
+                    Повторить
+                  </button>
+                </div>
+              ) : !usersData || usersData.length === 0 ? (
                 <p className="text-center text-xs text-sg-text-muted py-8">Пользователи не найдены</p>
               ) : (
                 usersData.map((u: any) => (
@@ -310,7 +365,18 @@ export default function AdminDashboardPage() {
                   <div className="h-12 skeleton rounded-xl" />
                   <div className="h-12 skeleton rounded-xl" />
                 </div>
-              ) : auditData.length === 0 ? (
+              ) : auditError ? (
+                <div className="p-4 bg-sg-surface rounded-xl border border-sg-border text-center space-y-2">
+                  <p className="text-xs text-red-400">Ошибка загрузки журнала аудита</p>
+                  <button
+                    type="button"
+                    onClick={() => refetchAudit()}
+                    className="px-3 py-1.5 bg-sg-surface-2 hover:bg-sg-surface-3 rounded-lg text-2xs text-white"
+                  >
+                    Повторить
+                  </button>
+                </div>
+              ) : !auditData || auditData.length === 0 ? (
                 <p className="text-center text-xs text-sg-text-muted py-8">Журнал аудита пуст</p>
               ) : (
                 auditData.map((log: any) => (

@@ -17,6 +17,7 @@ import {
   Shield,
   MessageSquare,
   HelpCircle,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface DashboardStats {
@@ -81,6 +82,13 @@ export default function DashboardPage() {
     enabled: isAuthed,
   });
 
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  };
+
   const settingsMutation = useMutation({
     mutationFn: async (data: Partial<UserSettings>) => {
       const res = await fetch('/api/settings', {
@@ -91,7 +99,10 @@ export default function DashboardPage() {
       });
       return res.json();
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      showToast('Настройка обновлена');
+    },
   });
 
   const toggleSetting = (key: keyof UserSettings) => {
@@ -113,6 +124,14 @@ export default function DashboardPage() {
           <Settings className="w-5 h-5 text-sg-text-secondary" />
         </Link>
       </header>
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-sg-surface border border-sg-purple text-white px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-lg animate-fade-in">
+          <CheckCircle2 className="w-3.5 h-3.5 text-sg-purple" />
+          <span>{toast}</span>
+        </div>
+      )}
 
       <div className="flex-1 px-4 space-y-4 animate-fade-in">
         {/* Main stat card */}

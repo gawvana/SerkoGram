@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useTelegramContext } from '@/providers/TelegramProvider';
 
 interface HeaderProps {
   title: string;
@@ -11,6 +13,29 @@ interface HeaderProps {
 
 export function Header({ title, showBack = true, rightAction }: HeaderProps) {
   const router = useRouter();
+  const { webApp } = useTelegramContext();
+
+  useEffect(() => {
+    if (!webApp?.BackButton) return;
+
+    if (showBack) {
+      webApp.BackButton.show();
+      const handleBack = () => {
+        router.back();
+      };
+      webApp.BackButton.onClick(handleBack);
+      return () => {
+        try {
+          webApp.BackButton.offClick(handleBack);
+          webApp.BackButton.hide();
+        } catch {
+          // ignore
+        }
+      };
+    } else {
+      webApp.BackButton.hide();
+    }
+  }, [showBack, webApp, router]);
 
   return (
     <header className="sticky top-0 z-10 glass-strong px-4 py-3">
