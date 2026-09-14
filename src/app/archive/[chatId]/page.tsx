@@ -4,14 +4,14 @@ import { use, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Header } from '@/components/layout/Header';
 import { MessageBubble } from '@/components/chat/MessageBubble';
-import { Trash2, Pencil, Image as ImageIcon, MessageSquare, RefreshCw } from 'lucide-react';
+import { Trash2, Pencil, Image as ImageIcon, MessageSquare, RefreshCw, Clock } from 'lucide-react';
 import type { MessageItem } from '@/lib/types';
 
 export default function ChatDetailPage({ params }: { params: Promise<{ chatId: string }> }) {
   const resolvedParams = use(params);
   const chatId = resolvedParams.chatId;
 
-  const [activeFilter, setActiveFilter] = useState<'all' | 'deleted' | 'edited' | 'photo'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'deleted' | 'ephemeral' | 'edited' | 'photo'>('all');
 
   // Fetch chat info
   const { data: chatData } = useQuery({
@@ -119,6 +119,19 @@ export default function ChatDetailPage({ params }: { params: Promise<{ chatId: s
         >
           <ImageIcon className="w-3 h-3" />
           Медиа ({chatData?.mediaCount ?? 0})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveFilter('ephemeral')}
+          className={`px-3 py-1 rounded-full whitespace-nowrap flex items-center gap-1 transition-colors ${
+            activeFilter === 'ephemeral'
+              ? 'bg-amber-500 text-white font-medium'
+              : 'bg-sg-surface-2 text-amber-400 hover:bg-sg-surface-3'
+          }`}
+        >
+          <Clock className="w-3 h-3" />
+          Одноразовые
         </button>
       </div>
 

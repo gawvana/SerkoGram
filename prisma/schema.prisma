@@ -88,29 +88,47 @@ enum AuditAction {
   ADMIN_ACTION
 }
 
+enum ArchiveStatus {
+  AVAILABLE
+  ARCHIVED
+  UNAVAILABLE
+  FAILED
+  EXPIRED_BEFORE_ARCHIVE
+}
+
+enum CommandExecutionStatus {
+  RECEIVED
+  PROCESSING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
 // ============================================================
 // USER & AUTH
 // ============================================================
 
 model User {
-  id              String   @id @default(cuid())
-  telegramId      BigInt   @unique @map("telegram_id")
-  firstName       String   @map("first_name")
-  lastName        String?  @map("last_name")
-  username        String?
-  languageCode    String?  @map("language_code")
-  photoUrl        String?  @map("photo_url")
-  isPremium       Boolean  @default(false) @map("is_premium")
-  isAdmin         Boolean  @default(false) @map("is_admin")
-  lastLoginAt     DateTime @default(now()) @map("last_login_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id                String               @id @default(cuid())
+  telegramId        BigInt               @unique @map("telegram_id")
+  firstName         String               @map("first_name")
+  lastName          String?              @map("last_name")
+  username          String?
+  languageCode      String?              @map("language_code")
+  photoUrl          String?              @map("photo_url")
+  isPremium         Boolean              @default(false) @map("is_premium")
+  isAdmin           Boolean              @default(false) @map("is_admin")
+  lastLoginAt       DateTime             @default(now()) @map("last_login_at")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
 
-  settings        UserSettings?
-  privacySettings PrivacySettings?
-  connections     BusinessConnection[]
-  tickets         SupportTicket[]
-  auditLogs       AuditLog[]
+  settings          UserSettings?
+  privacySettings   PrivacySettings?
+  connections       BusinessConnection[]
+  telegramAccounts  TelegramAccount[]
+  commandExecutions CommandExecution[]
+  tickets           SupportTicket[]
+  auditLogs         AuditLog[]
 
   @@map("users")
 }
@@ -290,15 +308,24 @@ model MessageMedia {
   duration         Int?
   storagePath      String? @map("storage_path")
   storageUrl       String? @map("storage_url")
-  thumbnailPath    String? @map("thumbnail_path")
-  isDownloaded     Boolean @default(false) @map("is_downloaded")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  thumbnailPath       String?       @map("thumbnail_path")
+  isDownloaded        Boolean       @default(false) @map("is_downloaded")
+  isEphemeral         Boolean       @default(false) @map("is_ephemeral")
+  isViewOnce          Boolean       @default(false) @map("is_view_once")
+  ttlSeconds          Int?          @map("ttl_seconds")
+  ephemeralDetectedAt DateTime?     @map("ephemeral_detected_at")
+  archiveStatus       ArchiveStatus @default(AVAILABLE) @map("archive_status")
+  archiveError        String?       @map("archive_error")
+  archivedAt          DateTime?     @map("archived_at")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
 
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([messageId])
   @@index([fileUniqueId])
+  @@index([isEphemeral])
+  @@index([archiveStatus])
   @@map("message_media")
 }
 
@@ -312,6 +339,56 @@ model MessageDeletion {
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@map("message_deletions")
+}
+
+// ============================================================
+// ACCOUNT AUTOMATION / CHAT AUTOMATION & COMMAND EXECUTIONS
+// ============================================================
+
+model TelegramAccount {
+  id               String           @id @default(cuid())
+  userId           String           @map("user_id")
+  telegramUserId   BigInt           @unique @map("telegram_user_id")
+  phoneNumber      String?          @map("phone_number")
+  firstName        String           @map("first_name")
+  lastName         String?          @map("last_name")
+  username         String?
+  sessionEncrypted String?          @map("session_encrypted")
+  status           ConnectionStatus @default(ACTIVE)
+  connectedAt      DateTime         @default(now()) @map("connected_at")
+  disconnectedAt   DateTime?        @map("disconnected_at")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("telegram_accounts")
+}
+
+model CommandExecution {
+  id                String                 @id @default(cuid())
+  userId            String                 @map("user_id")
+  chatId            String                 @map("chat_id")
+  telegramMessageId Int                    @map("telegram_message_id")
+  command           String
+  prefix            String                 @default(".")
+  arguments         String?
+  replyToMessageId  Int?                   @map("reply_to_message_id")
+  status            CommandExecutionStatus @default(RECEIVED)
+  resultMessageId   Int?                   @map("result_message_id")
+  errorCode         String?                @map("error_code")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  completedAt       DateTime?              @map("completed_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chatId, telegramMessageId])
+  @@index([chatId])
+  @@index([command])
+  @@index([status])
+  @@map("command_executions")
 }
 
 // ============================================================

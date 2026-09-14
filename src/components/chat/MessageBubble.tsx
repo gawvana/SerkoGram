@@ -111,6 +111,21 @@ export function MessageBubble({ msg }: MessageBubbleProps) {
           <div className="space-y-1.5 mb-2">
             {msg.media.map((item) => (
               <div key={item.id} className="rounded-xl overflow-hidden bg-black/20">
+                {(item.isEphemeral || item.isViewOnce) && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] bg-amber-500/15 border-b border-amber-500/20 text-amber-300 font-medium">
+                    <Clock className="w-3 h-3 text-amber-400 shrink-0" />
+                    <span>Одноразовое</span>
+                    <span className="ml-auto text-[10px] opacity-80">
+                      {item.archiveStatus === 'ARCHIVED'
+                        ? 'Сохранено в архиве'
+                        : item.archiveStatus === 'EXPIRED_BEFORE_ARCHIVE'
+                        ? 'Истекло до архивации'
+                        : item.archiveStatus === 'FAILED'
+                        ? 'Ошибка загрузки'
+                        : 'Временный файл'}
+                    </span>
+                  </div>
+                )}
                 {item.mediaType === 'photo' ? (
                   <div className="relative aspect-video flex items-center justify-center bg-black/30">
                     <ImageIcon className="w-8 h-8 text-white/50" />

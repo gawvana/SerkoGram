@@ -14,6 +14,9 @@ import { downloadAndStoreMedia } from '@/lib/services/media-service';
 import { logAudit } from '@/lib/services/audit-service';
 import { parseBotCommand } from './parser';
 import { executeCommand } from './handlers';
+import { parseAnyCommand } from '@/lib/commands/parser';
+import { executeDotCommand } from '@/lib/commands/executor';
+import { detectEphemeralAttributes } from '@/lib/services/ephemeral-service';
 import type { MessageType } from '@prisma/client';
 
 // Grammy types
@@ -248,6 +251,36 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
   if (!settings || settings.saveMedia) {
     await processMediaFromMessage(msg, saved.id);
   }
+
+  // Handle dot commands in business chat (e.g. .help, .info, .save, .coin, .search, etc.)
+  if (msg.text && msg.text.trim().startsWith('.')) {
+    try {
+      const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'SerkoGram_bot';
+      const parsedDot = parseAnyCommand(msg.text, {
+        allowedPrefixes: ['.'],
+        currentBotUsername: botUsername,
+        chatId: chat.id,
+        senderId: msg.from?.id,
+        replyToMessageId: msg.reply_to_message?.message_id,
+      });
+
+      if (parsedDot.isCommand) {
+        await executeDotCommand({
+          parsed: parsedDot,
+          chatId: chat.id,
+          telegramChatId: BigInt(msg.chat.id),
+          businessConnectionId: msg.business_connection_id,
+          userId: connection.userId,
+          callerTelegramId: msg.from ? BigInt(msg.from.id) : BigInt(0),
+          isOwner: isOutgoing,
+          messageId: msg.message_id,
+          replyToMessageId: msg.reply_to_message?.message_id,
+        });
+      }
+    } catch (cmdErr) {
+      console.error('[Webhook] Error executing dot command:', cmdErr);
+    }
+  }
 }
 
 // ============================================================
@@ -465,6 +498,13 @@ function detectMessageType(msg: TgMessage): MessageType {
 
 async function processMediaFromMessage(msg: TgMessage, messageId: string): Promise<void> {
   try {
+    const eph = detectEphemeralAttributes(msg);
+    const ephMeta = {
+      isEphemeral: eph.isEphemeral,
+      isViewOnce: eph.isViewOnce,
+      ttlSeconds: eph.ttlSeconds,
+    };
+
     if (msg.photo && msg.photo.length > 0) {
       const largest = msg.photo[msg.photo.length - 1];
       await downloadAndStoreMedia(messageId, largest.file_id, largest.file_unique_id, 'photo', {
@@ -472,6 +512,7 @@ async function processMediaFromMessage(msg: TgMessage, messageId: string): Promi
         height: largest.height,
         fileSize: largest.file_size,
         mimeType: 'image/jpeg',
+        ...ephMeta,
       });
     }
 
@@ -483,6 +524,7 @@ async function processMediaFromMessage(msg: TgMessage, messageId: string): Promi
         fileSize: msg.video.file_size,
         mimeType: msg.video.mime_type,
         fileName: msg.video.file_name,
+        ...ephMeta,
       });
     }
 

@@ -7,6 +7,8 @@ import { prisma } from '@/lib/db';
 import { getBot } from '@/lib/telegram/bot';
 import { getStorage } from './storage-service';
 
+import type { ArchiveStatus } from '@prisma/client';
+
 /**
  * Download a file from Telegram and upload to blob storage.
  */
@@ -22,6 +24,10 @@ export async function downloadAndStoreMedia(
     width?: number;
     height?: number;
     duration?: number;
+    isEphemeral?: boolean;
+    isViewOnce?: boolean;
+    ttlSeconds?: number;
+    archiveStatus?: ArchiveStatus;
   }
 ): Promise<void> {
   try {
@@ -60,6 +66,9 @@ export async function downloadAndStoreMedia(
       contentType: metadata?.mimeType ?? 'application/octet-stream',
     });
 
+    const isEph = metadata?.isEphemeral ?? false;
+    const isVo = metadata?.isViewOnce ?? false;
+
     // Save media record
     await prisma.messageMedia.upsert({
       where: {
@@ -79,11 +88,22 @@ export async function downloadAndStoreMedia(
         storagePath,
         storageUrl: stored.url,
         isDownloaded: true,
+        isEphemeral: isEph,
+        isViewOnce: isVo,
+        ttlSeconds: metadata?.ttlSeconds,
+        archiveStatus: isEph ? 'ARCHIVED' : 'AVAILABLE',
+        archivedAt: isEph ? new Date() : undefined,
+        ephemeralDetectedAt: isEph ? new Date() : undefined,
       },
       update: {
         storagePath,
         storageUrl: stored.url,
         isDownloaded: true,
+        isEphemeral: isEph,
+        isViewOnce: isVo,
+        ttlSeconds: metadata?.ttlSeconds,
+        archiveStatus: isEph ? 'ARCHIVED' : 'AVAILABLE',
+        archivedAt: isEph ? new Date() : undefined,
       },
     });
 
@@ -102,6 +122,9 @@ export async function downloadAndStoreMedia(
   } catch (error) {
     console.error('[Media] Error downloading/storing media:', error);
 
+    const isEph = metadata?.isEphemeral ?? false;
+    const isVo = metadata?.isViewOnce ?? false;
+
     // Still save the reference even if download failed
     await prisma.messageMedia.upsert({
       where: { id: fileUniqueId },
@@ -117,8 +140,20 @@ export async function downloadAndStoreMedia(
         height: metadata?.height,
         duration: metadata?.duration,
         isDownloaded: false,
+        isEphemeral: isEph,
+        isViewOnce: isVo,
+        ttlSeconds: metadata?.ttlSeconds,
+        archiveStatus: isEph ? 'FAILED' : 'UNAVAILABLE',
+        archiveError: error instanceof Error ? error.message : 'Download failed',
+        ephemeralDetectedAt: isEph ? new Date() : undefined,
       },
-      update: {},
+      update: {
+        isEphemeral: isEph,
+        isViewOnce: isVo,
+        ttlSeconds: metadata?.ttlSeconds,
+        archiveStatus: isEph ? 'FAILED' : undefined,
+        archiveError: error instanceof Error ? error.message : undefined,
+      },
     });
   }
 }

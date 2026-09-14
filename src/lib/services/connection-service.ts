@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // SerkoGram — Connection Service (Adapter Pattern)
 // Provides a unified interface for Business and Chat Automation
 // ============================================================
@@ -195,15 +195,112 @@ export class ChatAutomationAdapter implements ConnectionAdapter {
 }
 
 // ============================================================
+// Account Automation Adapter (Mode B — MTProto / Session Architecture)
+// ============================================================
+
+/**
+ * Account Automation adapter (Mode B).
+ * Manages user-level account automation records and synchronization.
+ */
+export class AccountAutomationAdapter implements ConnectionAdapter {
+  async getConnection(userId: string): Promise<BusinessConnection | null> {
+    return prisma.businessConnection.findFirst({
+      where: { userId, type: 'CHAT_AUTOMATION' },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getAccount(userId: string) {
+    return prisma.telegramAccount.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getChats(connectionId: string): Promise<Chat[]> {
+    return prisma.chat.findMany({
+      where: { connectionId },
+      orderBy: { lastMessageAt: 'desc' },
+    });
+  }
+
+  async getPermissions(_connectionId: string): Promise<ConnectionPermission[]> {
+    return [
+      {
+        key: 'account_session',
+        label: 'Авторизация аккаунта',
+        granted: true,
+      },
+      {
+        key: 'read_dialogs',
+        label: 'Чтение сообщений диалогов',
+        granted: true,
+      },
+      {
+        key: 'dot_commands',
+        label: 'Точечные команды (.) в чатах',
+        granted: true,
+      },
+      {
+        key: 'ephemeral_save',
+        label: 'Сохранение одноразовых фото/видео',
+        granted: true,
+      },
+    ];
+  }
+
+  async getStatus(connectionId: string): Promise<ConnectionStatus> {
+    const conn = await prisma.businessConnection.findUnique({
+      where: { id: connectionId },
+    });
+    return conn?.status ?? 'DISCONNECTED';
+  }
+
+  async disconnect(connectionId: string): Promise<void> {
+    await prisma.$transaction([
+      prisma.businessConnection.update({
+        where: { id: connectionId },
+        data: {
+          status: 'DISCONNECTED',
+          isEnabled: false,
+          disconnectedAt: new Date(),
+        },
+      }),
+      prisma.telegramAccount.updateMany({
+        where: { status: 'ACTIVE' },
+        data: {
+          status: 'DISCONNECTED',
+          disconnectedAt: new Date(),
+        },
+      }),
+    ]);
+  }
+
+  async processMessage(chatId: string, messageData: any): Promise<any> {
+    return saveMessage({ ...messageData, chatId });
+  }
+
+  async processEdit(chatId: string, editData: any): Promise<void> {
+    await processEditedMessage({ ...editData, chatId });
+  }
+
+  async processDelete(chatId: string, messageIds: number[]): Promise<void> {
+    await processDeletedMessages(chatId, messageIds, new Date());
+  }
+}
+
+// ============================================================
 // Factory
 // ============================================================
 
-export function getAdapter(type: 'BUSINESS' | 'CHAT_AUTOMATION'): ConnectionAdapter {
+export function getAdapter(type: 'BUSINESS' | 'CHAT_AUTOMATION' | 'ACCOUNT'): ConnectionAdapter {
   switch (type) {
     case 'BUSINESS':
       return new BusinessAdapter();
     case 'CHAT_AUTOMATION':
       return new ChatAutomationAdapter();
+    case 'ACCOUNT':
+      return new AccountAutomationAdapter();
     default:
       return new BusinessAdapter();
   }

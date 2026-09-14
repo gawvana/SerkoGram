@@ -165,6 +165,11 @@ export interface MediaItem {
   height: number | null;
   duration: number | null;
   isDownloaded: boolean;
+  isEphemeral?: boolean;
+  isViewOnce?: boolean;
+  archiveStatus?: string;
+  archiveError?: string | null;
+  ttlSeconds?: number | null;
 }
 
 // ============================================================

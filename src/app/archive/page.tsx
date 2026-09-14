@@ -17,6 +17,7 @@ import {
 const FILTERS = [
   { key: 'all', label: 'Все' },
   { key: 'deleted', label: 'Удалённые' },
+  { key: 'ephemeral', label: '🕐 Одноразовые' },
   { key: 'edited', label: 'Изменённые' },
   { key: 'media', label: 'Все медиа' },
   { key: 'photo', label: 'Фото' },

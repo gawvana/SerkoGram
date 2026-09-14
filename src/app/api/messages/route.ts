@@ -1,4 +1,4 @@
-﻿import { requireAuth } from '@/lib/auth/session';
+import { requireAuth } from '@/lib/auth/session';
 import { apiSuccess, apiError } from '@/lib/api-helpers';
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
@@ -31,6 +31,13 @@ export async function GET(req: Request) {
 
     if (isDeleted || filter === 'deleted') {
       where.isDeleted = true;
+    }
+    if (filter === 'ephemeral') {
+      where.media = {
+        some: {
+          isEphemeral: true,
+        },
+      };
     }
     if (filter === 'edited') {
       where.isEdited = true;

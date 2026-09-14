@@ -13,6 +13,7 @@ export async function GET(req: Request) {
     const user = await requireAuth();
     const { searchParams } = new URL(req.url);
     const q = searchParams.get('q') || searchParams.get('search') || '';
+    const filter = searchParams.get('filter');
     const limit = parseInt(searchParams.get('limit') || '30', 10);
     const cursor = searchParams.get('cursor');
 
@@ -20,6 +21,10 @@ export async function GET(req: Request) {
       where: {
         connection: { userId: user.id },
         ...(q ? { title: { contains: q, mode: 'insensitive' } } : {}),
+        ...(filter === 'deleted' ? { deletedMessages: { gt: 0 } } : {}),
+        ...(filter === 'edited' ? { editedMessages: { gt: 0 } } : {}),
+        ...(filter === 'media' ? { mediaCount: { gt: 0 } } : {}),
+        ...(filter === 'ephemeral' ? { messages: { some: { media: { some: { isEphemeral: true } } } } } : {}),
       },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),

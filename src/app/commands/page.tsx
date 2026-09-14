@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useMemo } from 'react';
 import { Header } from '@/components/layout/Header';
@@ -22,6 +22,8 @@ import {
   Film,
   Image as ImageIcon,
   Smile,
+  Languages,
+  Radio,
   CheckCircle2,
   AlertCircle,
   ExternalLink,
@@ -32,14 +34,20 @@ import Link from 'next/link';
 
 export default function CommandsPage() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedPrefix, setSelectedPrefix] = useState<'all' | '.' | '/'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [activeCommand, setActiveCommand] = useState<CommandDefinition | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // Filter commands by search query and category
+  // Filter commands by prefix, search query and category
   const filteredCommands = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return COMMANDS_REGISTRY.filter((cmd) => {
+      const matchesPrefix =
+        selectedPrefix === 'all' ||
+        cmd.prefix === selectedPrefix ||
+        cmd.prefix === '.|/';
+
       const matchesCategory =
         selectedCategory === 'all' || cmd.category === selectedCategory;
 
@@ -50,9 +58,9 @@ export default function CommandsPage() {
         cmd.description.toLowerCase().includes(q) ||
         cmd.usage.toLowerCase().includes(q);
 
-      return matchesCategory && matchesSearch;
+      return matchesPrefix && matchesCategory && matchesSearch;
     });
-  }, [searchQuery, selectedCategory]);
+  }, [searchQuery, selectedPrefix, selectedCategory]);
 
   const handleCopyUsage = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -72,12 +80,16 @@ export default function CommandsPage() {
         return Gamepad2;
       case 'ai':
         return Bot;
+      case 'translation':
+        return Languages;
       case 'animations':
         return Film;
       case 'media':
         return ImageIcon;
       case 'fun':
         return Smile;
+      case 'mirror':
+        return Radio;
       default:
         return Terminal;
     }
@@ -96,6 +108,43 @@ export default function CommandsPage() {
           <p className="text-xs text-sg-text-muted leading-relaxed">
             Все поддерживаемые команды SerkoGram в чате бота и в подключённых чатах Telegram Business.
           </p>
+        </div>
+
+        {/* Prefix Segmented Filter */}
+        <div className="flex bg-sg-surface p-1 rounded-xl border border-sg-border/60 text-xs font-medium">
+          <button
+            type="button"
+            onClick={() => setSelectedPrefix('all')}
+            className={`flex-1 py-1.5 rounded-lg text-center transition-all ${
+              selectedPrefix === 'all'
+                ? 'bg-sg-purple text-white shadow-sm font-semibold'
+                : 'text-sg-text-secondary hover:text-sg-text-primary'
+            }`}
+          >
+            Все ({COMMANDS_REGISTRY.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedPrefix('.')}
+            className={`flex-1 py-1.5 rounded-lg text-center transition-all ${
+              selectedPrefix === '.'
+                ? 'bg-sg-purple text-white shadow-sm font-semibold'
+                : 'text-sg-text-secondary hover:text-sg-text-primary'
+            }`}
+          >
+            Точечные (.) чаты
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedPrefix('/')}
+            className={`flex-1 py-1.5 rounded-lg text-center transition-all ${
+              selectedPrefix === '/'
+                ? 'bg-sg-purple text-white shadow-sm font-semibold'
+                : 'text-sg-text-secondary hover:text-sg-text-primary'
+            }`}
+          >
+            Бот (/) команды
+          </button>
         </div>
 
         {/* Search Bar */}
@@ -129,10 +178,16 @@ export default function CommandsPage() {
                 : 'bg-sg-surface border border-sg-border/40 text-sg-text-secondary hover:text-sg-text-primary'
             }`}
           >
-            Все ({COMMANDS_REGISTRY.length})
+            Все категории
           </button>
           {COMMAND_CATEGORIES.map((cat) => {
-            const count = COMMANDS_REGISTRY.filter((c) => c.category === cat.id).length;
+            const count = COMMANDS_REGISTRY.filter((c) => {
+              const prefixMatches =
+                selectedPrefix === 'all' ||
+                c.prefix === selectedPrefix ||
+                c.prefix === '.|/';
+              return prefixMatches && c.category === cat.id;
+            }).length;
             const isSelected = selectedCategory === cat.id;
             return (
               <button
@@ -166,6 +221,9 @@ export default function CommandsPage() {
           <div className="bg-sg-surface border border-sg-border/60 rounded-2xl divide-y divide-sg-border/40 overflow-hidden shadow-sm">
             {filteredCommands.map((cmd) => {
               const Icon = getCategoryIcon(cmd.category);
+              const prefixLabel = cmd.prefix === '.' ? `.${cmd.command}` : cmd.prefix === '/' ? `/${cmd.command}` : `.${cmd.command}`;
+              const contextBadge = cmd.prefix === '.' ? 'Чат' : cmd.prefix === '/' ? 'Бот' : 'Чат/Бот';
+
               return (
                 <button
                   key={cmd.id}
@@ -179,7 +237,10 @@ export default function CommandsPage() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-mono font-bold text-sg-purple bg-sg-purple/10 px-1.5 py-0.5 rounded">
-                          /{cmd.command}
+                          {prefixLabel}
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-sg-surface-2 text-sg-text-muted">
+                          {contextBadge}
                         </span>
                         <span className="text-sm font-medium text-sg-text-primary truncate">
                           {cmd.title}
@@ -220,9 +281,12 @@ export default function CommandsPage() {
             {/* Header */}
             <div className="flex items-start justify-between">
               <div className="space-y-1">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-mono font-bold text-sg-purple bg-sg-purple/15 px-2 py-0.5 rounded-md">
-                    /{activeCommand.command}
+                    {activeCommand.prefix === '.' ? `.${activeCommand.command}` : activeCommand.prefix === '/' ? `/${activeCommand.command}` : `.${activeCommand.command}`}
+                  </span>
+                  <span className="text-[11px] px-2 py-0.5 rounded bg-sg-surface-2 text-sg-text-secondary font-medium">
+                    {activeCommand.prefix === '.' ? 'В любых чатах' : activeCommand.prefix === '/' ? 'В чате с ботом' : 'В чатах и боте'}
                   </span>
                   <span className="text-base font-semibold text-sg-text-primary">
                     {activeCommand.title}
