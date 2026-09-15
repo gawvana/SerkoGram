@@ -16,11 +16,14 @@ import type {
   SupportTicket,
   SupportMessage,
   AuditLog,
+  OwnerNotification,
   MessageType,
   TicketStatus,
   TicketCategory,
   ConnectionStatus,
   RetentionPeriod,
+  NotificationStatus,
+  NotificationType,
 } from '@prisma/client';
 
 // Re-export Prisma types
@@ -38,6 +41,7 @@ export type {
   SupportTicket,
   SupportMessage,
   AuditLog,
+  OwnerNotification,
 };
 
 export {
@@ -46,6 +50,8 @@ export {
   TicketCategory,
   ConnectionStatus,
   RetentionPeriod,
+  NotificationStatus,
+  NotificationType,
 } from '@prisma/client';
 
 // ============================================================

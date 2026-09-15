@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useTelegramContext } from '@/providers/TelegramProvider';
 import { BottomNav } from '@/components/layout/BottomNav';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import {
   Home,
   ArrowDownLeft,
@@ -120,9 +121,12 @@ export default function DashboardPage() {
           </div>
           <h1 className="text-lg font-semibold text-sg-text-primary">SerkoGram</h1>
         </div>
-        <Link href="/settings" className="p-2 rounded-lg hover:bg-sg-surface-2 transition-colors" aria-label="Настройки">
-          <Settings className="w-5 h-5 text-sg-text-secondary" />
-        </Link>
+        <div className="flex items-center gap-1">
+          <NotificationBell />
+          <Link href="/settings" className="p-2 rounded-lg hover:bg-sg-surface-2 transition-colors" aria-label="Настройки">
+            <Settings className="w-5 h-5 text-sg-text-secondary" />
+          </Link>
+        </div>
       </header>
 
       {/* Toast */}

@@ -191,9 +191,11 @@ describe('Dot Command Executor (executeDotCommand)', () => {
     expect(resBubble.responseMessage).toBe('ⓐⓑⓒ');
   });
 
-  it('should format .archive link with scoped telegramChatId', async () => {
+  it('should keep .archive silent to managed chat and format link in direct chat', async () => {
     process.env.NEXT_PUBLIC_APP_URL = 'https://serkogram.vercel.app';
-    const ctx: ExecuteDotCommandContext = {
+    
+    // In managed chat: SILENT to interlocutor
+    const managedCtx: ExecuteDotCommandContext = {
       parsed: parseAnyCommand('.archive'),
       chatId: 'internal_uuid_123',
       telegramChatId: BigInt('100200300'),
@@ -202,11 +204,28 @@ describe('Dot Command Executor (executeDotCommand)', () => {
       callerTelegramId: BigInt('111222333'),
       isOwner: true,
       messageId: 104,
+      isDirectBotChat: false,
     };
 
-    const res = await executeDotCommand(ctx);
-    expect(res.status).toBe('SUCCESS');
-    expect(res.responseMessage).toContain('https://serkogram.vercel.app/archive/100200300');
+    const resManaged = await executeDotCommand(managedCtx);
+    expect(resManaged.status).toBe('SUCCESS');
+    expect(resManaged.responseMessage).toBeFalsy();
+
+    // In direct bot chat: returns link to owner
+    const directCtx: ExecuteDotCommandContext = {
+      parsed: parseAnyCommand('.archive'),
+      chatId: 'internal_uuid_123',
+      telegramChatId: BigInt('100200300'),
+      userId: 'user_123',
+      callerTelegramId: BigInt('111222333'),
+      isOwner: true,
+      messageId: 105,
+      isDirectBotChat: true,
+    };
+
+    const resDirect = await executeDotCommand(directCtx);
+    expect(resDirect.status).toBe('SUCCESS');
+    expect(resDirect.responseMessage).toContain('https://serkogram.vercel.app/archive/100200300');
   });
 
   it('should execute animation commands (.p, .love, .love2, .-7)', async () => {

@@ -104,6 +104,24 @@ enum CommandExecutionStatus {
   CANCELLED
 }
 
+enum NotificationStatus {
+  PENDING
+  SENT
+  READ
+  FAILED
+}
+
+enum NotificationType {
+  ARCHIVE_SUCCESS
+  MEDIA_SAVED
+  EPHEMERAL_SAVED
+  ARCHIVE_FAILURE
+  MESSAGE_DELETED
+  MESSAGE_EDITED
+  COMMAND_RESULT
+  SYSTEM
+}
+
 // ============================================================
 // USER & AUTH
 // ============================================================
@@ -129,6 +147,7 @@ model User {
   commandExecutions CommandExecution[]
   tickets           SupportTicket[]
   auditLogs         AuditLog[]
+  notifications     OwnerNotification[]
 
   @@map("users")
 }
@@ -452,4 +471,35 @@ model ProcessedUpdate {
   processedAt DateTime @default(now()) @map("processed_at")
 
   @@map("processed_updates")
+}
+
+// ============================================================
+// OWNER NOTIFICATIONS (PRIVATE NOTIFICATION CENTER)
+// ============================================================
+
+model OwnerNotification {
+  id             String             @id @default(cuid())
+  userId         String             @map("user_id")
+  telegramUserId BigInt             @map("telegram_user_id")
+  type           NotificationType
+  title          String
+  text           String
+  chatId         String?            @map("chat_id")
+  chatTitle      String?            @map("chat_title")
+  messageId      Int?               @map("message_id")
+  mediaId        String?            @map("media_id")
+  mediaType      String?            @map("media_type")
+  isEphemeral    Boolean            @default(false) @map("is_ephemeral")
+  status         NotificationStatus @default(PENDING)
+  error          String?
+  createdAt      DateTime           @default(now()) @map("created_at")
+  readAt         DateTime?          @map("read_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([telegramUserId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("owner_notifications")
 }

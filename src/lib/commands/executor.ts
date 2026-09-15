@@ -7,6 +7,7 @@ import { getBot } from '@/lib/telegram/bot';
 import { getCommandByName, isAiProviderConfigured } from './registry';
 import { resolveReplyContext } from './reply-context';
 import { saveEphemeralMedia } from '@/lib/services/ephemeral-service';
+import { ownerNotificationService } from '@/lib/services/owner-notification-service';
 import { chatAutomation } from '@/lib/services/connection-service';
 import {
   toFlip,
@@ -31,6 +32,9 @@ export interface ExecuteDotCommandContext {
   messageId: number;                // Telegram message id
   replyToMessageId?: number;        // Optional reply to message id
   replyToMessageObj?: any;          // Optional raw Telegram reply_to_message object
+  ownerTelegramId?: bigint;         // Authoritative owner Telegram ID
+  chatTitle?: string;               // Chat title or contact name
+  isDirectBotChat?: boolean;        // Whether this command was issued in direct chat with bot
 }
 
 export interface ExecutionResult {
@@ -234,7 +238,7 @@ export async function executeDotCommand(
             `🟣 <b>SerkoGram</b>\n\n` +
             `• <b>Статус</b>: Подключено и активно\n` +
             `• <b>Режим</b>: Точечные команды (.)\n` +
-            `• <b>Контекст</b>: Текущий диалог защищён архивом SerkoGram.`;
+            `• <b>Контекст</b>: Интеграция SerkoGram активна.`;
         }
         break;
       }
@@ -330,7 +334,7 @@ export async function executeDotCommand(
             replyCtx.media.mediaType === 'VIDEO_NOTE'
           );
           responseText = hasAudio
-            ? `🎙 <b>Расшифровка голосового (STT):</b>\n\n<i>«Сообщение зафиксировано в архиве SerkoGram. Аудиодорожка успешно распознана.»</i>`
+            ? `🎙 <b>Расшифровка голосового (STT):</b>\n\n<i>«Аудиодорожка успешно распознана.»</i>`
             : `🎙 <b>STT:</b> В ответном сообщении не обнаружено аудиофайла или голосовой записи.`;
           replyToId = replyToMessageId;
         }
@@ -391,14 +395,65 @@ export async function executeDotCommand(
       // МЕДИА И АРХИВ (SCOPED LINKS ПО telegramChatId)
       // ------------------------------------------------------------
       case 'save': {
+        const targetOwnerId = ctx.ownerTelegramId || ctx.callerTelegramId;
+        const isManagedChat = Boolean(ctx.businessConnectionId) || !ctx.isDirectBotChat;
+
         if (!replyToMessageId) {
-          responseText = `ℹ️ Команда <code>.save</code> используется <b>в ответ</b> на сообщение или медиафайл (включая одноразовые фото/видео).`;
+          if (isManagedChat) {
+            // SILENT to managed chat — send private hint to owner
+            await ownerNotificationService.notifyCommandResult({
+              userId,
+              telegramUserId: targetOwnerId,
+              command: '.save',
+              title: 'ℹ️ Команда .save',
+              text: 'Команда <code>.save</code> используется в ответ на сообщение или медиафайл (включая одноразовые фото/видео).',
+              chatId,
+              chatTitle: ctx.chatTitle,
+            }).catch(() => null);
+            responseText = null;
+          } else {
+            // Direct bot chat — show hint in direct conversation
+            responseText = `ℹ️ Команда <code>.save</code> используется <b>в ответ</b> на сообщение или медиафайл (включая одноразовые фото/видео).`;
+          }
         } else {
           const res = await saveEphemeralMedia(chatId, replyToMessageId, userId, replyToMessageObj);
-          responseText = res.success
-            ? `✅ <b>Медиафайл сохранён!</b>\n${escapeHtml(res.message)}`
-            : `⚠️ ${escapeHtml(res.message)}`;
-          replyToId = replyToMessageId;
+          if (res.success) {
+            if (res.isEphemeral || res.isViewOnce) {
+              await ownerNotificationService.notifyEphemeralSaved({
+                userId,
+                telegramUserId: targetOwnerId,
+                chatId,
+                chatTitle: ctx.chatTitle,
+                messageId: replyToMessageId,
+                mediaId: res.media?.id,
+                mediaType: res.media?.mediaType,
+                details: res.message,
+              }).catch(() => null);
+            } else {
+              await ownerNotificationService.notifyArchiveSuccess({
+                userId,
+                telegramUserId: targetOwnerId,
+                chatId,
+                chatTitle: ctx.chatTitle,
+                messageId: replyToMessageId,
+                mediaId: res.media?.id,
+                mediaType: res.media?.mediaType,
+                isEphemeral: false,
+                details: res.message,
+              }).catch(() => null);
+            }
+          } else {
+            await ownerNotificationService.notifyArchiveFailure({
+              userId,
+              telegramUserId: targetOwnerId,
+              chatId,
+              chatTitle: ctx.chatTitle,
+              messageId: replyToMessageId,
+              error: res.error || res.message,
+            }).catch(() => null);
+          }
+          // STRICT PRIVACY: SILENT to interlocutor! Under NO circumstances send to managed chat
+          responseText = null;
         }
         break;
       }
@@ -407,42 +462,135 @@ export async function executeDotCommand(
         if (!replyToMessageId) {
           responseText = `🎙 Команда <code>.гс</code> используется в ответ на голосовое сообщение или видеозаметку.`;
         } else {
-          responseText = `🎙 Голосовое сообщение зафиксировано в архиве и отправлено на обработку аудиодорожки.`;
+          responseText = `🎙 Голосовое сообщение отправлено на обработку аудиодорожки.`;
           replyToId = replyToMessageId;
         }
         break;
       }
 
       case 'archive': {
-        responseText = appUrl
-          ? `📁 <b>Архив текущего чата</b>:\n${appUrl}/archive/${telegramChatId.toString()}`
-          : `📁 Архив текущего чата сохранён в SerkoGram.`;
+        const targetOwnerId = ctx.ownerTelegramId || ctx.callerTelegramId;
+        const isManagedChat = Boolean(ctx.businessConnectionId) || !ctx.isDirectBotChat;
+        const archiveLink = appUrl ? `${appUrl}/archive/${telegramChatId.toString()}` : '';
+
+        if (isManagedChat) {
+          // Never send archive links to interlocutors in managed chat!
+          await ownerNotificationService.notifyCommandResult({
+            userId,
+            telegramUserId: targetOwnerId,
+            command: '.archive',
+            title: '📁 Архив чата',
+            text: archiveLink
+              ? `Архив переписки чата «${escapeHtml(ctx.chatTitle || 'Диалог')}»:\n${archiveLink}`
+              : 'Архив текущего чата сохранён в SerkoGram.',
+            chatId,
+            chatTitle: ctx.chatTitle,
+          }).catch(() => null);
+          responseText = null;
+        } else {
+          responseText = archiveLink
+            ? `📁 <b>Архив текущего чата</b>:\n${archiveLink}`
+            : `📁 Архив текущего чата сохранён в SerkoGram.`;
+        }
         break;
       }
 
       case 'deleted': {
-        responseText = appUrl
-          ? `🗑 <b>Удалённые сообщения этого чата</b>:\n${appUrl}/archive/${telegramChatId.toString()}?filter=deleted`
-          : `🗑 Раздел удалённых сообщений доступен в SerkoGram.`;
+        const targetOwnerId = ctx.ownerTelegramId || ctx.callerTelegramId;
+        const isManagedChat = Boolean(ctx.businessConnectionId) || !ctx.isDirectBotChat;
+        const deletedLink = appUrl ? `${appUrl}/archive/${telegramChatId.toString()}?filter=deleted` : '';
+
+        if (isManagedChat) {
+          await ownerNotificationService.notifyCommandResult({
+            userId,
+            telegramUserId: targetOwnerId,
+            command: '.deleted',
+            title: '🗑 Удалённые сообщения',
+            text: deletedLink
+              ? `Удалённые сообщения чата «${escapeHtml(ctx.chatTitle || 'Диалог')}»:\n${deletedLink}`
+              : 'Раздел удалённых сообщений доступен в SerkoGram.',
+            chatId,
+            chatTitle: ctx.chatTitle,
+          }).catch(() => null);
+          responseText = null;
+        } else {
+          responseText = deletedLink
+            ? `🗑 <b>Удалённые сообщения этого чата</b>:\n${deletedLink}`
+            : `🗑 Раздел удалённых сообщений доступен в SerkoGram.`;
+        }
         break;
       }
 
       case 'media': {
-        responseText = appUrl
-          ? `📷 <b>Медиатека этого чата</b>:\n${appUrl}/archive/${telegramChatId.toString()}?filter=media`
-          : `📷 Медиатека доступна в SerkoGram.`;
+        const targetOwnerId = ctx.ownerTelegramId || ctx.callerTelegramId;
+        const isManagedChat = Boolean(ctx.businessConnectionId) || !ctx.isDirectBotChat;
+        const mediaLink = appUrl ? `${appUrl}/archive/${telegramChatId.toString()}?filter=media` : '';
+
+        if (isManagedChat) {
+          await ownerNotificationService.notifyCommandResult({
+            userId,
+            telegramUserId: targetOwnerId,
+            command: '.media',
+            title: '📷 Медиатека',
+            text: mediaLink
+              ? `Медиафайлы чата «${escapeHtml(ctx.chatTitle || 'Диалог')}»:\n${mediaLink}`
+              : 'Медиатека доступна в SerkoGram.',
+            chatId,
+            chatTitle: ctx.chatTitle,
+          }).catch(() => null);
+          responseText = null;
+        } else {
+          responseText = mediaLink
+            ? `📷 <b>Медиатека этого чата</b>:\n${mediaLink}`
+            : `📷 Медиатека доступна в SerkoGram.`;
+        }
         break;
       }
 
       case 'search': {
         const q = parsed.rawArguments;
+        const targetOwnerId = ctx.ownerTelegramId || ctx.callerTelegramId;
+        const isManagedChat = Boolean(ctx.businessConnectionId) || !ctx.isDirectBotChat;
+
         if (!q) {
-          responseText = `🔍 Укажите поисковый запрос: <code>.search договор</code>`;
+          if (isManagedChat) {
+            await ownerNotificationService.notifyCommandResult({
+              userId,
+              telegramUserId: targetOwnerId,
+              command: '.search',
+              title: '🔍 Поиск по архиву',
+              text: 'Укажите поисковый запрос, например: <code>.search договор</code>',
+              chatId,
+              chatTitle: ctx.chatTitle,
+            }).catch(() => null);
+            responseText = null;
+          } else {
+            responseText = `🔍 Укажите поисковый запрос: <code>.search договор</code>`;
+          }
         } else {
           const encoded = encodeURIComponent(q);
-          responseText = appUrl
-            ? `🔍 Поиск по чату «<b>${escapeHtml(q)}</b>»:\n${appUrl}/archive/${telegramChatId.toString()}?search=true&q=${encoded}`
-            : `🔍 Поиск по чату запущен: ${escapeHtml(q)}`;
+          const searchLink = appUrl
+            ? `${appUrl}/archive/${telegramChatId.toString()}?search=true&q=${encoded}`
+            : '';
+
+          if (isManagedChat) {
+            await ownerNotificationService.notifyCommandResult({
+              userId,
+              telegramUserId: targetOwnerId,
+              command: '.search',
+              title: `🔍 Поиск: ${escapeHtml(q)}`,
+              text: searchLink
+                ? `Результаты поиска по чату «${escapeHtml(ctx.chatTitle || 'Диалог')}»:\n${searchLink}`
+                : `Поиск по запросу «${escapeHtml(q)}» запущен в SerkoGram.`,
+              chatId,
+              chatTitle: ctx.chatTitle,
+            }).catch(() => null);
+            responseText = null;
+          } else {
+            responseText = searchLink
+              ? `🔍 Поиск по чату «<b>${escapeHtml(q)}</b>»:\n${searchLink}`
+              : `🔍 Поиск по чату запущен: ${escapeHtml(q)}`;
+          }
         }
         break;
       }
@@ -498,7 +646,7 @@ export async function executeDotCommand(
         responseText =
           `🔇 <b>Ограничение диалога</b>\n\n` +
           `Собеседник <b>${escapeHtml(targetName)}</b> заглушен в системе на <b>${escapeHtml(duration)}</b>.\n` +
-          `Уведомления отключены, входящие сообщения продолжают сохраняться в архив.`;
+          `Уведомления отключены.`;
         if (replyToMessageId) replyToId = replyToMessageId;
         break;
       }
@@ -507,16 +655,14 @@ export async function executeDotCommand(
         responseText =
           `🚨 <b>Режим экстренной защиты (PANIC MODE)</b>\n\n` +
           `• Временные токены и кэш сессии очищены.\n` +
-          `• Входящие исчезающие медиафайлы немедленно изолированы.\n` +
-          `• Запись сессии переведена в режим максимальной скрытности.`;
+          `• Диалог переведён в защищённый режим.`;
         break;
       }
 
       case 'snos': {
         responseText =
-          `🗑 <b>Уничтожение данных диалога</b>\n\n` +
-          `Вы запросили очистку истории для чата <code>${telegramChatId.toString()}</code>.\n` +
-          `Для подтверждения необратимого удаления перейдите в панель управления:\n` +
+          `🗑 <b>Управление данными диалога</b>\n\n` +
+          `Для управления параметрами перейдите в панель управления:\n` +
           (appUrl ? `${appUrl}/settings` : 'Настройки SerkoGram');
         break;
       }
@@ -599,7 +745,7 @@ export async function executeDotCommand(
             `• <b>Telegram ID:</b> <code>${callerTelegramId.toString()}</code>\n` +
             `• <b>Чат:</b> <code>${telegramChatId.toString()}</code>\n` +
             `• <b>Подключение:</b> Telegram Business Bot API 7.2+\n` +
-            `• <b>Архив:</b> Активен`;
+            `• <b>Статус:</b> Активен`;
         }
         break;
       }
@@ -787,11 +933,11 @@ export async function executeDotCommand(
           responseText = `⏳ Не так быстро! Агро-режим остывает...`;
         } else {
           const roasts = [
-            'Ты думал, твои удалённые сообщения никто не видит? SerkoGram помнит всё. 😎',
-            'Ещё одно слово, и я экспортирую всю историю твоих правок прямо сюда! 😈',
+            'Думаешь, это сойдёт тебе с рук? Не тут-то было! 😎',
+            'Ещё одно слово, и ты узнаешь, что такое настоящий сарказм! 😈',
             'Слишком много шума для того, кто даже не настроил двухфакторку! 🛡',
             'Осторожно: уровень токсичности в этом чате превысил допустимые нормы! ☣️',
-            'Удалил сообщение? Наивный... В архиве уже сделано 3 бэкапа! 💾',
+            'Думал скрыть правду? Интернет помнит всё! 💾',
           ];
           const replyCtx = replyToMessageId
             ? await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj)
@@ -882,7 +1028,7 @@ export async function executeDotCommand(
         if (!checkCooldown(userId, 'troll', 10)) {
           responseText = `⏳ Подождите 10 секунд перед следующей командой.`;
         } else {
-          responseText = `🙃 <b>SerkoGram</b>: Всё под контролем, переписка надёжно архивируется.`;
+          responseText = `🙃 <b>SerkoGram</b>: Всё под контролем, система на связи.`;
         }
         break;
       }
@@ -898,8 +1044,16 @@ export async function executeDotCommand(
       }
     }
 
-    // Send response to the same chat
+    // Send response to the same chat (with hard privacy check for managed chats)
     let sentMessageId: number | undefined = undefined;
+    const isManagedChat = Boolean(businessConnectionId) || !ctx.isDirectBotChat;
+    const isOwnerPrivateMode = commandDef.responseMode === 'OWNER_PRIVATE' || commandDef.responseMode === 'SILENT';
+
+    if (responseText && isManagedChat && isOwnerPrivateMode) {
+      console.warn(`[PRIVACY GUARD] Suppressed reply for command '${parsed.command}' in managed chat ${telegramChatId.toString()}`);
+      responseText = null;
+    }
+
     if (responseText) {
       try {
         const sent = await bot.api.sendMessage(telegramChatId.toString(), responseText, {
@@ -928,7 +1082,7 @@ export async function executeDotCommand(
 
     return {
       status: 'SUCCESS',
-      responseMessage: responseText,
+      responseMessage: responseText ?? undefined,
       resultTelegramMessageId: sentMessageId,
     };
   } catch (error: any) {

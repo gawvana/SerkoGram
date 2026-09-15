@@ -11,6 +11,9 @@ export interface EphemeralSaveResult {
   archiveStatus: ArchiveStatus;
   message: string;
   media?: MessageMedia | null;
+  isViewOnce?: boolean;
+  isEphemeral?: boolean;
+  error?: string;
 }
 
 /**
@@ -144,11 +147,14 @@ export async function saveEphemeralMedia(
           where: { messageId: targetMsg.id, fileUniqueId },
         });
 
+        const ephAttr = detectEphemeralAttributes(rawReplyToObj);
         return {
           success: true,
           archiveStatus: 'ARCHIVED',
           message: `Медиафайл успешно зафиксирован и сохранён в защищённом архиве SerkoGram!`,
           media: storedMedia,
+          isViewOnce: ephAttr.isViewOnce,
+          isEphemeral: ephAttr.isEphemeral,
         };
       } catch (dlErr: any) {
         console.warn('[EphemeralService] Direct download note:', dlErr?.message);
@@ -161,6 +167,7 @@ export async function saveEphemeralMedia(
       success: false,
       archiveStatus: 'UNAVAILABLE',
       message: 'Сообщение с медиафайлом не найдено в архиве для сохранения.',
+      error: 'Сообщение не найдено в архиве',
     };
   }
 
@@ -170,6 +177,7 @@ export async function saveEphemeralMedia(
       success: false,
       archiveStatus: 'UNAVAILABLE',
       message: 'Доступ ограничен: чужой диалог.',
+      error: 'Доступ ограничен: чужой диалог',
     };
   }
 
@@ -178,6 +186,7 @@ export async function saveEphemeralMedia(
       success: false,
       archiveStatus: 'UNAVAILABLE',
       message: 'В ответном сообщении не обнаружено медиафайлов для сохранения.',
+      error: 'В ответном сообщении не обнаружено медиафайлов',
     };
   }
 
@@ -190,6 +199,8 @@ export async function saveEphemeralMedia(
       archiveStatus: 'ARCHIVED',
       message: 'Медиафайл уже успешно сохранён в защищённом архиве SerkoGram.',
       media,
+      isViewOnce: media.isViewOnce,
+      isEphemeral: media.isEphemeral,
     };
   }
 
@@ -224,6 +235,8 @@ export async function saveEphemeralMedia(
         archiveStatus: 'ARCHIVED',
         message: 'Одноразовый медиафайл успешно зафиксирован и сохранён в вашем архиве!',
         media: updated,
+        isViewOnce: true,
+        isEphemeral: true,
       };
     }
 
@@ -243,6 +256,9 @@ export async function saveEphemeralMedia(
       archiveStatus: 'EXPIRED_BEFORE_ARCHIVE',
       message: 'Медиафайл уже истёк на серверах Telegram и недоступен для сохранения.',
       media: expiredRecord,
+      isViewOnce: true,
+      isEphemeral: true,
+      error: 'Срок действия медиа истёк на серверах Telegram до загрузки в архив.',
     };
   } catch (error: any) {
     console.error('[EphemeralService] Failed to save ephemeral media:', error);
@@ -261,6 +277,8 @@ export async function saveEphemeralMedia(
       archiveStatus: 'FAILED',
       message: 'Не удалось сохранить одноразовый медиафайл: ошибка передачи данных.',
       media: failedRecord,
+      isEphemeral: true,
+      error: error?.message || 'Ошибка загрузки медиафайла',
     };
   }
 }

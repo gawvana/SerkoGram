@@ -20,11 +20,13 @@ export type CommandCategory =
   | 'utility';
 
 export type ResponseMode =
+  | 'PUBLIC_CHAT'
+  | 'OWNER_PRIVATE'
+  | 'MINI_APP'
+  | 'SILENT'
   | 'SAME_CHAT'
   | 'REPLY'
-  | 'EDIT'
-  | 'MINI_APP'
-  | 'SILENT';
+  | 'EDIT';
 
 export interface CommandCategoryInfo {
   id: CommandCategory;
@@ -271,7 +273,7 @@ export const UNIFIED_COMMANDS: UnifiedCommandDefinition[] = [
     requiresAI: false,
     requiresMedia: false,
     requiredPermissions: ['read_messages'],
-    responseMode: 'SAME_CHAT',
+    responseMode: 'MINI_APP',
     uiRoute: '/archive?search=true',
     telegramMenu: true,
     handlerIdentifier: 'handleSearch',
@@ -576,7 +578,7 @@ export const UNIFIED_COMMANDS: UnifiedCommandDefinition[] = [
     requiresAI: false,
     requiresMedia: true,
     requiredPermissions: ['read_messages'],
-    responseMode: 'REPLY',
+    responseMode: 'OWNER_PRIVATE',
     uiRoute: '/archive',
     telegramMenu: false,
     handlerIdentifier: 'handleSave',

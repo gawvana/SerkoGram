@@ -333,6 +333,9 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
           messageId: msg.message_id,
           replyToMessageId: msg.reply_to_message?.message_id,
           replyToMessageObj: msg.reply_to_message,
+          ownerTelegramId: ownerTelegramId,
+          chatTitle: msg.chat.title || msg.chat.first_name || 'Диалог',
+          isDirectBotChat: false,
         });
       }
     } catch (cmdErr) {
