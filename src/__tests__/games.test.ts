@@ -57,7 +57,7 @@ describe('Tic-Tac-Toe Engine', () => {
     const keyboard = renderTttKeyboard(winningBoard, true);
     // 3 rows of cells + 1 restart button row
     expect(keyboard.length).toBe(4);
-    expect(keyboard[3][0].callback_data).toBe('ttt:reset');
+    expect((keyboard[3][0] as any).callback_data).toBe('ttt:reset');
   });
 });
 
@@ -67,6 +67,6 @@ describe('Rock-Paper-Scissors Engine', () => {
     expect(res.text).toContain('Камень, Ножницы, Бумага');
     expect(res.text).toContain('Ваш выбор: <b>🪨 Камень</b>');
     expect(res.keyboard.length).toBe(2);
-    expect(res.keyboard[1][0].callback_data).toBe('rps:reset');
+    expect((res.keyboard[1][0] as any).callback_data).toBe('rps:reset');
   });
 });

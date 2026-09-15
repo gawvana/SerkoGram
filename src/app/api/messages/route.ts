@@ -21,13 +21,16 @@ export async function GET(req: Request) {
 
     if (!chatId) return apiError('chatId обязателен', 400);
 
+    const isNumeric = /^-?\d+$/.test(chatId);
     const chat = await prisma.chat.findFirst({
-      where: { id: chatId, connection: { userId: user.id } },
+      where: isNumeric
+        ? { telegramChatId: BigInt(chatId), connection: { userId: user.id } }
+        : { id: chatId, connection: { userId: user.id } },
     });
 
     if (!chat) return apiError('Доступ запрещен', 403);
 
-    const where: Prisma.MessageWhereInput = { chatId };
+    const where: Prisma.MessageWhereInput = { chatId: chat.id };
 
     if (isDeleted || filter === 'deleted') {
       where.isDeleted = true;

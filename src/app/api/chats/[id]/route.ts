@@ -17,8 +17,11 @@ export async function GET(
     const resolvedParams = await params;
     const chatId = resolvedParams.id;
 
+    const isNumeric = /^-?\d+$/.test(chatId);
     const chat = await prisma.chat.findFirst({
-      where: { id: chatId, connection: { userId: user.id } },
+      where: isNumeric
+        ? { telegramChatId: BigInt(chatId), connection: { userId: user.id } }
+        : { id: chatId, connection: { userId: user.id } },
       include: {
         members: true,
       },

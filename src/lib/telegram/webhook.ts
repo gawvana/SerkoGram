@@ -10,6 +10,7 @@ import {
   processEditedMessage,
   processDeletedMessages,
 } from '@/lib/services/message-service';
+import { getRealTelegramBusinessConnection } from '@/lib/services/connection-service';
 import { downloadAndStoreMedia } from '@/lib/services/media-service';
 import { logAudit } from '@/lib/services/audit-service';
 import { parseBotCommand } from './parser';
@@ -164,11 +165,58 @@ async function handleBusinessConnection(update: Update): Promise<void> {
 async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise<void> {
   if (!msg.business_connection_id) return;
 
+  const botId = Number(process.env.TELEGRAM_BOT_TOKEN?.split(':')[0] || '0');
+  if (botId > 0 && ((msg.from && msg.from.id === botId) || (msg as any).via_bot?.id === botId)) {
+    return;
+  }
+
+  // Authoritative real connection lookup
+  const realBc = await getRealTelegramBusinessConnection(msg.business_connection_id);
+
   // Find the business connection WITH owner user details
-  const connection = await prisma.businessConnection.findUnique({
+  let connection = await prisma.businessConnection.findUnique({
     where: { telegramConnectionId: msg.business_connection_id },
     include: { user: true },
   });
+
+  // If local DB is missing connection record but Telegram confirms it is active, auto-upsert
+  if (!connection && realBc && realBc.is_enabled) {
+    const user = await prisma.user.upsert({
+      where: { telegramId: BigInt(realBc.user.id) },
+      create: {
+        telegramId: BigInt(realBc.user.id),
+        firstName: realBc.user.first_name,
+        lastName: realBc.user.last_name ?? null,
+        username: realBc.user.username ?? null,
+        isPremium: realBc.user.is_premium ?? false,
+      },
+      update: {
+        firstName: realBc.user.first_name,
+        lastName: realBc.user.last_name ?? null,
+        username: realBc.user.username ?? null,
+      },
+    });
+
+    connection = await prisma.businessConnection.upsert({
+      where: { telegramConnectionId: msg.business_connection_id },
+      create: {
+        userId: user.id,
+        telegramConnectionId: msg.business_connection_id,
+        type: 'BUSINESS',
+        status: 'ACTIVE',
+        canReply: Boolean(realBc.can_reply),
+        isEnabled: Boolean(realBc.is_enabled),
+        connectedAt: new Date(realBc.date * 1000),
+      },
+      update: {
+        status: 'ACTIVE',
+        canReply: Boolean(realBc.can_reply),
+        isEnabled: Boolean(realBc.is_enabled),
+      },
+      include: { user: true },
+    });
+  }
+
   if (!connection || connection.status !== 'ACTIVE') return;
 
   // Check user settings
@@ -225,14 +273,16 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
 
   // RELIABLE OUTGOING DETECTION:
   // 1. is_from_offline is true when business owner sent it from an official client
-  // 2. In private chats, if sender is not the chat partner, it was sent by business owner
-  // 3. Sender ID matches the business connection owner's Telegram ID
+  // 2. Sender ID matches the authoritative business connection owner's Telegram ID
+  // 3. In private chats, if sender is not the chat partner, it was sent by business owner
+  const ownerTelegramId = realBc?.user?.id
+    ? BigInt(realBc.user.id)
+    : connection.user?.telegramId;
+
   const isOutgoing =
     msg.is_from_offline === true ||
-    (msg.chat.type === 'private' && msg.from ? msg.from.id !== msg.chat.id : false) ||
-    (msg.from && connection.user?.telegramId
-      ? BigInt(msg.from.id) === connection.user.telegramId
-      : false);
+    (ownerTelegramId && msg.from ? BigInt(msg.from.id) === ownerTelegramId : false) ||
+    (msg.chat.type === 'private' && msg.from ? msg.from.id !== msg.chat.id : false);
 
   // Save message
   const saved = await saveMessage({
@@ -280,6 +330,7 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
           isOwner: isOutgoing,
           messageId: msg.message_id,
           replyToMessageId: msg.reply_to_message?.message_id,
+          replyToMessageObj: msg.reply_to_message,
         });
       }
     } catch (cmdErr) {

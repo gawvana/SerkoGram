@@ -51,27 +51,36 @@ export default function ConnectPage() {
               <div className="mt-3 space-y-2">
                 <PermissionItem label="Чтение сообщений" granted />
                 <PermissionItem label="Получение удалений" granted />
-                <PermissionItem label="Работа с выбранными чатами" granted />
+                <PermissionItem label="Ответ на сообщения (can_reply) — для команд в чате" granted />
+                <PermissionItem label="Работа в обычных диалогах с людьми" granted />
               </div>
 
               <div className="mt-4 space-y-2">
-                <p className="text-xs text-sg-text-muted">Как подключить:</p>
-                <ol className="text-xs text-sg-text-secondary space-y-1.5">
+                <p className="text-xs font-medium text-sg-purple">Пошаговое подключение (6 шагов):</p>
+                <ol className="text-xs text-sg-text-secondary space-y-2">
                   <li className="flex gap-2">
-                    <span className="text-sg-purple font-medium">1.</span>
+                    <span className="text-sg-purple font-bold">1.</span>
                     Откройте Telegram → Настройки
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-sg-purple font-medium">2.</span>
-                    Telegram Business → Чат-боты
+                    <span className="text-sg-purple font-bold">2.</span>
+                    Выберите «Telegram Business» → «Чат-боты»
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-sg-purple font-medium">3.</span>
-                    Найдите и выберите SerkoGram
+                    <span className="text-sg-purple font-bold">3.</span>
+                    Найдите бота <code className="text-sg-purple">@SerkoGram_bot</code>
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-sg-purple font-medium">4.</span>
-                    Настройте разрешения и чаты
+                    <span className="text-sg-purple font-bold">4.</span>
+                    Включите доступ к управлению чатами
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-sg-purple font-bold">5.</span>
+                    <span><b>ОБЯЗАТЕЛЬНО</b> включите пункт <i>«Отвечать на сообщения»</i> (can_reply)</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-sg-purple font-bold">6.</span>
+                    Выберите чаты («Все личные чаты») и нажмите «Готово»
                   </li>
                 </ol>
               </div>

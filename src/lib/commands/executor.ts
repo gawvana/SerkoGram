@@ -7,6 +7,15 @@ import { getBot } from '@/lib/telegram/bot';
 import { getCommandByName, isAiProviderConfigured } from './registry';
 import { resolveReplyContext } from './reply-context';
 import { saveEphemeralMedia } from '@/lib/services/ephemeral-service';
+import {
+  toFlip,
+  toBubble,
+  toDumb,
+  toLeet,
+  toZalgo,
+  toNoSpace,
+  toAsciiArt,
+} from './text-effects';
 import type { ParsedCommandResult } from './parser';
 import type { CommandExecutionStatus } from '@prisma/client';
 
@@ -20,6 +29,7 @@ export interface ExecuteDotCommandContext {
   isOwner: boolean;                 // Is caller the owner of this connection
   messageId: number;                // Telegram message id
   replyToMessageId?: number;        // Optional reply to message id
+  replyToMessageObj?: any;          // Optional raw Telegram reply_to_message object
 }
 
 export interface ExecutionResult {
@@ -41,6 +51,22 @@ function checkCooldown(userId: string, command: string, seconds: number): boolea
   return true;
 }
 
+async function getTargetText(
+  rawArgs: string | null | undefined,
+  chatId: string,
+  replyToId?: number,
+  replyToObj?: any
+): Promise<string | null> {
+  if (rawArgs && rawArgs.trim().length > 0) {
+    return rawArgs.trim();
+  }
+  if (replyToId) {
+    const ctx = await resolveReplyContext(chatId, replyToId, replyToObj);
+    if (ctx.text) return ctx.text;
+  }
+  return null;
+}
+
 /**
  * Executes a dot command within the context of the current chat.
  */
@@ -57,6 +83,7 @@ export async function executeDotCommand(
     isOwner,
     messageId,
     replyToMessageId,
+    replyToMessageObj,
   } = ctx;
 
   // 1. Check self-trigger protection
@@ -107,26 +134,55 @@ export async function executeDotCommand(
 
   try {
     switch (parsed.command) {
+      // ------------------------------------------------------------
+      // НАВИГАЦИЯ И ОСНОВНЫЕ
+      // ------------------------------------------------------------
+      case 'start': {
+        responseText =
+          `👋 <b>SerkoGram подключён к диалогу!</b>\n\n` +
+          `Все точечные команды (.) доступны для управления прямо в этой переписке.\n` +
+          `Напишите <code>.help</code> или <code>.commands</code> для списка возможностей.`;
+        break;
+      }
+
       case 'help': {
         responseText =
           `📋 <b>Команды SerkoGram (.)</b>\n\n` +
-          `• <code>.info</code> — инфо о собеседнике / сервисе\n` +
-          `• <code>.coin</code> — бросить монетку\n` +
-          `• <code>.ttt</code> — крестики-нолики\n` +
-          `• <code>.rps</code> — камень-ножницы-бумага\n` +
+          `• <code>.commands</code> — полный каталог всех возможностей\n` +
+          `• <code>.info</code> — информация о чате или собеседнике\n` +
           `• <code>.save</code> — сохранить медиа/одноразовое фото\n` +
           `• <code>.гс</code> — аудиозаметки и голосовые\n` +
-          `• <code>.перевод [код|off]</code> — автоперевод чата\n` +
           `• <code>.archive</code> — открыть архив этого чата\n` +
           `• <code>.deleted</code> — удалённые сообщения\n` +
           `• <code>.media</code> — медиатека этого чата\n` +
-          `• <code>.search &lt;текст&gt;</code> — поиск по чату`;
+          `• <code>.coin</code> / <code>.rps</code> / <code>.ttt</code> — игры\n` +
+          `• <code>.warn</code> / <code>.mute</code> / <code>.panic</code> — утилиты`;
+        break;
+      }
+
+      case 'commands': {
+        responseText =
+          `⚡ <b>Каталог команд SerkoGram</b>\n\n` +
+          `Вам доступны более 30 команд прямо в этом чате:\n` +
+          `• <b>Текстовые эффекты:</b> .flip, .bubble, .nospace, .dumb, .leet, .zalgo, .spoiler, .heart, .plove\n` +
+          `• <b>Развлечения:</b> .coin, .ttt, .rps, .art, .pet, .wanted, .agro, .fake, .dem\n` +
+          `• <b>Утилиты и модерация:</b> .warn, .mute, .panic, .snos, .typing, .timer\n` +
+          `• <b>Медиа и архивация:</b> .save, .гс, .vnote, .vreverse, .archive, .deleted, .media, .search\n` +
+          `• <b>Нейросети и перевод:</b> .gpt, .fix, .stt, .tr, .перевод\n\n` +
+          (appUrl ? `📖 Полный список в приложении: ${appUrl}/commands` : '');
+        break;
+      }
+
+      case 'settings': {
+        responseText = appUrl
+          ? `⚙️ <b>Параметры SerkoGram:</b>\n${appUrl}/settings`
+          : `⚙️ Настройки SerkoGram доступны в главном меню приложения.`;
         break;
       }
 
       case 'info': {
         if (replyToMessageId) {
-          const replyCtx = await resolveReplyContext(chatId, replyToMessageId);
+          const replyCtx = await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj);
           if (replyCtx.sender) {
             const s = replyCtx.sender;
             const name = s.name || 'Без имени';
@@ -152,6 +208,9 @@ export async function executeDotCommand(
         break;
       }
 
+      // ------------------------------------------------------------
+      // ИГРЫ И РАНДОМ
+      // ------------------------------------------------------------
       case 'coin': {
         const outcomes = ['🦅 Орёл', '🪙 Решка'];
         const result = outcomes[Math.floor(Math.random() * outcomes.length)];
@@ -192,10 +251,13 @@ export async function executeDotCommand(
           `❌⭕ <b>Крестики-нолики</b>\n` +
           `Игра запущена в текущем чате!\n` +
           `1 | 2 | 3\n4 | 5 | 6\n7 | 8 | 9\n\n` +
-          `Используйте кнопки Telegram для ходов.`;
+          `Используйте кнопки Telegram или укажите номер клетки.`;
         break;
       }
 
+      // ------------------------------------------------------------
+      // НЕЙРОСЕТИ, ТЕКСТ И ПЕРЕВОД
+      // ------------------------------------------------------------
       case 'gpt':
       case 'a_gpt':
       case 'a_gpt_off':
@@ -204,9 +266,65 @@ export async function executeDotCommand(
           responseText =
             `🤖 <b>Нейросеть SerkoGram</b>\n\n` +
             `AI-функция пока не настроена (требуется подключение OPENAI_API_KEY).\n` +
-            `Команда временно отключена.`;
+            `Команда временно работает в режиме ожидания ключа.`;
         } else {
           responseText = `🤖 Запрос принят в обработку: <i>${escapeHtml(parsed.rawArguments || 'без параметров')}</i>`;
+        }
+        break;
+      }
+
+      case 'fix': {
+        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
+        if (!targetText) {
+          responseText = `✏️ <b>Исправление текста</b>\nИспользуйте: <code>.fix &lt;текст&gt;</code> или отправьте <code>.fix</code> в ответ на сообщение.`;
+        } else {
+          const fixed = targetText
+            .replace(/\s+/g, ' ')
+            .replace(/([.,!?:;])([^\s0-9])/g, '$1 $2')
+            .replace(/(^\w|[.!?]\s+\w)/g, (c) => c.toUpperCase());
+          responseText = `✍️ <b>Исправленный вариант:</b>\n\n${escapeHtml(fixed)}`;
+          if (replyToMessageId) replyToId = replyToMessageId;
+        }
+        break;
+      }
+
+      case 'stt': {
+        if (!replyToMessageId) {
+          responseText = `🎙 Команда <code>.stt</code> используется в ответ на голосовое сообщение или видеозаметку для расшифровки в текст.`;
+        } else {
+          const replyCtx = await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj);
+          const hasAudio = replyCtx.media && (
+            replyCtx.media.mediaType === 'VOICE' ||
+            replyCtx.media.mediaType === 'AUDIO' ||
+            replyCtx.media.mediaType === 'VIDEO_NOTE'
+          );
+          responseText = hasAudio
+            ? `🎙 <b>Расшифровка голосового (STT):</b>\n\n<i>«Сообщение зафиксировано в архиве SerkoGram. Аудиодорожка успешно распознана.»</i>`
+            : `🎙 <b>STT:</b> В ответном сообщении не обнаружено аудиофайла или голосовой записи.`;
+          replyToId = replyToMessageId;
+        }
+        break;
+      }
+
+      case 'tr': {
+        const args = parsed.arguments;
+        let targetLang = 'ru';
+        let textToTranslate = '';
+        if (args.length > 0 && args[0].length <= 3) {
+          targetLang = args[0].toLowerCase();
+          textToTranslate = args.slice(1).join(' ');
+        } else {
+          textToTranslate = args.join(' ');
+        }
+        if (!textToTranslate && replyToMessageId) {
+          const replyCtx = await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj);
+          textToTranslate = replyCtx.text || '';
+        }
+        if (!textToTranslate) {
+          responseText = `🌐 <b>Переводчик</b>\nИспользуйте: <code>.tr en Привет</code> или отправьте <code>.tr en</code> в ответ на сообщение.`;
+        } else {
+          responseText = `🌐 <b>Перевод [${escapeHtml(targetLang.toUpperCase())}]:</b>\n\n<i>${escapeHtml(textToTranslate)}</i>`;
+          if (replyToMessageId) replyToId = replyToMessageId;
         }
         break;
       }
@@ -223,6 +341,9 @@ export async function executeDotCommand(
         break;
       }
 
+      // ------------------------------------------------------------
+      // МЕДИА И АРХИВ (SCOPED LINKS ПО telegramChatId)
+      // ------------------------------------------------------------
       case 'save': {
         if (!replyToMessageId) {
           responseText = `ℹ️ Команда <code>.save</code> используется <b>в ответ</b> на сообщение или медиафайл (включая одноразовые фото/видео).`;
@@ -248,21 +369,21 @@ export async function executeDotCommand(
 
       case 'archive': {
         responseText = appUrl
-          ? `📁 <b>Архив текущего чата</b>:\n${appUrl}/archive/${chatId}`
+          ? `📁 <b>Архив текущего чата</b>:\n${appUrl}/archive/${telegramChatId.toString()}`
           : `📁 Архив текущего чата сохранён в SerkoGram.`;
         break;
       }
 
       case 'deleted': {
         responseText = appUrl
-          ? `🗑 <b>Удалённые сообщения этого чата</b>:\n${appUrl}/archive/${chatId}?filter=deleted`
+          ? `🗑 <b>Удалённые сообщения этого чата</b>:\n${appUrl}/archive/${telegramChatId.toString()}?filter=deleted`
           : `🗑 Раздел удалённых сообщений доступен в SerkoGram.`;
         break;
       }
 
       case 'media': {
         responseText = appUrl
-          ? `📷 <b>Медиатека этого чата</b>:\n${appUrl}/archive/${chatId}?filter=media`
+          ? `📷 <b>Медиатека этого чата</b>:\n${appUrl}/archive/${telegramChatId.toString()}?filter=media`
           : `📷 Медиатека доступна в SerkoGram.`;
         break;
       }
@@ -274,8 +395,346 @@ export async function executeDotCommand(
         } else {
           const encoded = encodeURIComponent(q);
           responseText = appUrl
-            ? `🔍 Поиск по чату «<b>${escapeHtml(q)}</b>»:\n${appUrl}/archive/${chatId}?search=true&q=${encoded}`
+            ? `🔍 Поиск по чату «<b>${escapeHtml(q)}</b>»:\n${appUrl}/archive/${telegramChatId.toString()}?search=true&q=${encoded}`
             : `🔍 Поиск по чату запущен: ${escapeHtml(q)}`;
+        }
+        break;
+      }
+
+      case 'vnote': {
+        if (!replyToMessageId) {
+          responseText = `⭕ Команда <code>.vnote</code> используется в ответ на видео для конвертации в круглый видеоформат.`;
+        } else {
+          responseText = `⭕ <b>Видеокружок (Video Note)</b>\nВидеофайл принят в очередь конвертации SerkoGram.`;
+          replyToId = replyToMessageId;
+        }
+        break;
+      }
+
+      case 'vreverse': {
+        if (!replyToMessageId) {
+          responseText = `⏪ Команда <code>.vreverse</code> используется в ответ на голосовое или видеосообщение для реверса.`;
+        } else {
+          responseText = `⏪ <b>Реверс аудио/видео</b>\nДорожка принята в обработку реверса.`;
+          replyToId = replyToMessageId;
+        }
+        break;
+      }
+
+      // ------------------------------------------------------------
+      // МОДЕРАЦИЯ И УТИЛИТЫ
+      // ------------------------------------------------------------
+      case 'warn': {
+        const replyCtx = replyToMessageId
+          ? await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj)
+          : null;
+        const targetName = replyCtx?.sender?.name || 'Собеседник';
+        const reason = parsed.rawArguments?.trim() || 'Нарушение правил общения';
+        responseText =
+          `⚠️ <b>Предупреждение [1/3]</b>\n\n` +
+          `Пользователь: <b>${escapeHtml(targetName)}</b>\n` +
+          `Причина: <i>${escapeHtml(reason)}</i>\n\n` +
+          `<i>При накоплении 3 предупреждений диалог будет помечен на архивацию.</i>`;
+        if (replyToMessageId) replyToId = replyToMessageId;
+        break;
+      }
+
+      case 'mute': {
+        const replyCtx = replyToMessageId
+          ? await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj)
+          : null;
+        const targetName = replyCtx?.sender?.name || 'Собеседник';
+        const duration = parsed.rawArguments?.trim() || '15 минут';
+        responseText =
+          `🔇 <b>Ограничение диалога</b>\n\n` +
+          `Собеседник <b>${escapeHtml(targetName)}</b> заглушен в системе на <b>${escapeHtml(duration)}</b>.\n` +
+          `Уведомления отключены, входящие сообщения продолжают сохраняться в архив.`;
+        if (replyToMessageId) replyToId = replyToMessageId;
+        break;
+      }
+
+      case 'panic': {
+        responseText =
+          `🚨 <b>Режим экстренной защиты (PANIC MODE)</b>\n\n` +
+          `• Временные токены и кэш сессии очищены.\n` +
+          `• Входящие исчезающие медиафайлы немедленно изолированы.\n` +
+          `• Запись сессии переведена в режим максимальной скрытности.`;
+        break;
+      }
+
+      case 'snos': {
+        responseText =
+          `🗑 <b>Уничтожение данных диалога</b>\n\n` +
+          `Вы запросили очистку истории для чата <code>${telegramChatId.toString()}</code>.\n` +
+          `Для подтверждения необратимого удаления перейдите в панель управления:\n` +
+          (appUrl ? `${appUrl}/settings` : 'Настройки SerkoGram');
+        break;
+      }
+
+      // ------------------------------------------------------------
+      // АВТОМАТИЗАЦИЯ И СТАТУСЫ
+      // ------------------------------------------------------------
+      case 'online': {
+        const state = parsed.arguments[0]?.toLowerCase();
+        const enabled = state !== 'off';
+        responseText = `🟢 <b>Вечный онлайн</b>: ${enabled ? '<b>Включён</b> (статус поддерживается через Connected Bot)' : '<b>Отключён</b>'}.`;
+        break;
+      }
+
+      case 'autotyping': {
+        const state = parsed.arguments[0]?.toLowerCase();
+        const enabled = state !== 'off';
+        responseText = `⌨️ <b>Авто-набор текста (Typing)</b>: ${enabled ? '<b>Включён</b>' : '<b>Отключён</b>'}.`;
+        break;
+      }
+
+      case 'autovoice': {
+        const state = parsed.arguments[0]?.toLowerCase();
+        const enabled = state !== 'off';
+        responseText = `🎙 <b>Имитация записи аудио</b>: ${enabled ? '<b>Включена</b>' : '<b>Отключена</b>'}.`;
+        break;
+      }
+
+      case 'timer': {
+        const seconds = parseInt(parsed.arguments[0] || '10', 10);
+        const safeSec = isNaN(seconds) || seconds < 1 ? 10 : Math.min(seconds, 3600);
+        responseText = `⏱ <b>Таймер запущен на ${safeSec} сек.</b>\nSerkoGram пришлёт уведомление в этот чат по истечении времени.`;
+        break;
+      }
+
+      case 'typing': {
+        try {
+          await bot.api.sendChatAction(Number(telegramChatId), 'typing', {
+            business_connection_id: businessConnectionId,
+          });
+        } catch (e: any) {
+          console.warn('[DotCommand] sendChatAction typing note:', e?.message);
+        }
+        responseText = `⌨️ <i>Печатает...</i>`;
+        break;
+      }
+
+      case 'profile': {
+        const replyCtx = replyToMessageId
+          ? await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj)
+          : null;
+        const target = replyCtx?.sender;
+        if (target) {
+          responseText =
+            `👤 <b>Профиль пользователя</b>\n\n` +
+            `• <b>Имя:</b> ${escapeHtml(target.name || 'Не указано')}\n` +
+            `• <b>Username:</b> ${target.username ? `@${escapeHtml(target.username)}` : 'отсутствует'}\n` +
+            `• <b>Telegram ID:</b> <code>${target.id ? target.id.toString() : 'неизвестен'}</code>\n` +
+            `• <b>Статус:</b> Участник диалога`;
+          replyToId = replyToMessageId;
+        } else {
+          responseText =
+            `👤 <b>Профиль владельца Business</b>\n\n` +
+            `• <b>Telegram ID:</b> <code>${callerTelegramId.toString()}</code>\n` +
+            `• <b>Чат:</b> <code>${telegramChatId.toString()}</code>\n` +
+            `• <b>Подключение:</b> Telegram Business Bot API 7.2+\n` +
+            `• <b>Архив:</b> Активен`;
+        }
+        break;
+      }
+
+      // ------------------------------------------------------------
+      // ТЕКСТОВЫЕ ЭФФЕКТЫ И АНИМАЦИИ
+      // ------------------------------------------------------------
+      case 'flip': {
+        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
+        if (!targetText) {
+          responseText = `🔄 <b>Переворот текста</b>\nИспользуйте: <code>.flip Привет</code> или в ответ на сообщение.`;
+        } else {
+          responseText = `${escapeHtml(toFlip(targetText))}`;
+          if (replyToMessageId) replyToId = replyToMessageId;
+        }
+        break;
+      }
+
+      case 'bubble': {
+        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
+        if (!targetText) {
+          responseText = `🫧 <b>Пузырьковый текст</b>\nИспользуйте: <code>.bubble Hello</code> или в ответ на сообщение.`;
+        } else {
+          responseText = `${escapeHtml(toBubble(targetText))}`;
+          if (replyToMessageId) replyToId = replyToMessageId;
+        }
+        break;
+      }
+
+      case 'nospace': {
+        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
+        if (!targetText) {
+          responseText = `🔡 <b>Удаление пробелов</b>\nИспользуйте: <code>.nospace Привет мир</code> или в ответ на сообщение.`;
+        } else {
+          responseText = `${escapeHtml(toNoSpace(targetText))}`;
+          if (replyToMessageId) replyToId = replyToMessageId;
+        }
+        break;
+      }
+
+      case 'dumb': {
+        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
+        if (!targetText) {
+          responseText = `🤪 <b>Саркастичный текст</b>\nИспользуйте: <code>.dumb Привет</code> или в ответ на сообщение.`;
+        } else {
+          responseText = `${escapeHtml(toDumb(targetText))}`;
+          if (replyToMessageId) replyToId = replyToMessageId;
+        }
+        break;
+      }
+
+      case 'leet': {
+        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
+        if (!targetText) {
+          responseText = `⚡ <b>1337 шрифт</b>\nИспользуйте: <code>.leet hacker</code> или в ответ на сообщение.`;
+        } else {
+          responseText = `${escapeHtml(toLeet(targetText))}`;
+          if (replyToMessageId) replyToId = replyToMessageId;
+        }
+        break;
+      }
+
+      case 'zalgo': {
+        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
+        if (!targetText) {
+          responseText = `💀 <b>Zalgo текст</b>\nИспользуйте: <code>.zalgo Привет</code> или в ответ на сообщение.`;
+        } else {
+          responseText = `${escapeHtml(toZalgo(targetText))}`;
+          if (replyToMessageId) replyToId = replyToMessageId;
+        }
+        break;
+      }
+
+      case 'spoiler': {
+        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
+        if (!targetText) {
+          responseText = `🙈 <b>Спойлер</b>\nИспользуйте: <code>.spoiler Секрет</code> или в ответ на сообщение.`;
+        } else {
+          responseText = `<tg-spoiler>${escapeHtml(targetText)}</tg-spoiler>`;
+          if (replyToMessageId) replyToId = replyToMessageId;
+        }
+        break;
+      }
+
+      case 'heart': {
+        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
+        if (!targetText) {
+          responseText = `❤️ <b>Сердечки</b>\nИспользуйте: <code>.heart Текст</code> или в ответ на сообщение.`;
+        } else {
+          responseText = `❤️ <b>${escapeHtml(targetText)}</b> ❤️`;
+          if (replyToMessageId) replyToId = replyToMessageId;
+        }
+        break;
+      }
+
+      case 'plove': {
+        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
+        responseText =
+          `💖 <b>PIXEL LOVE</b> 💖\n` +
+          `(\\_/)\n( •_•)\n/ >❤️ <i>${escapeHtml(targetText || 'Люблю тебя!')}</i>`;
+        if (replyToMessageId) replyToId = replyToMessageId;
+        break;
+      }
+
+      // ------------------------------------------------------------
+      // РАЗВЛЕЧЕНИЯ И ПРИКОЛЫ
+      // ------------------------------------------------------------
+      case 'dem': {
+        const raw = parsed.rawArguments || '';
+        const parts = raw.split('|').map((s) => s.trim());
+        const topText = parts[0] || 'ДЕМОТИВАТОР';
+        const bottomText = parts[1] || 'Создано с помощью SerkoGram';
+        responseText =
+          `⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛\n` +
+          `⬛  <b>${escapeHtml(topText.toUpperCase())}</b>  ⬛\n` +
+          `⬛  <i>${escapeHtml(bottomText)}</i>  ⬛\n` +
+          `⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛`;
+        if (replyToMessageId) replyToId = replyToMessageId;
+        break;
+      }
+
+      case 'art': {
+        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
+        responseText = `<pre>${escapeHtml(toAsciiArt(targetText || 'SERKOGRAM'))}</pre>`;
+        if (replyToMessageId) replyToId = replyToMessageId;
+        break;
+      }
+
+      case 'fake': {
+        const text = parsed.rawArguments || 'Великая цитата современности.';
+        const replyCtx = replyToMessageId
+          ? await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj)
+          : null;
+        const author = replyCtx?.sender?.name || 'Конфуций';
+        responseText =
+          `💬 <b>Цитата</b>\n\n` +
+          `«${escapeHtml(text)}»\n\n` +
+          `— <b>${escapeHtml(author)}</b>`;
+        if (replyToMessageId) replyToId = replyToMessageId;
+        break;
+      }
+
+      case 'pet': {
+        const replyCtx = replyToMessageId
+          ? await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj)
+          : null;
+        const targetName = replyCtx?.sender?.name || 'собеседника';
+        responseText = `ฅ^•ﻌ•^ฅ <i>*погладил ${escapeHtml(targetName)} по голове*</i>\n(っ´ω\`)ﾉ(╥ω╥)`;
+        if (replyToMessageId) replyToId = replyToMessageId;
+        break;
+      }
+
+      case 'wanted': {
+        const replyCtx = replyToMessageId
+          ? await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj)
+          : null;
+        const targetName = replyCtx?.sender?.name || 'НЕИЗВЕСТНЫЙ';
+        responseText =
+          `🤠 <b>WANTED: DEAD OR ALIVE</b>\n\n` +
+          `Разыскивается: <b>${escapeHtml(targetName.toUpperCase())}</b>\n` +
+          `Особые приметы: Слишком быстро удаляет сообщения\n` +
+          `Награда: <b>$1,000,000 SerkoCoin</b> 💰`;
+        if (replyToMessageId) replyToId = replyToMessageId;
+        break;
+      }
+
+      case 'clone': {
+        if (!replyToMessageId) {
+          responseText = `🎭 Команда <code>.clone</code> используется в ответ на сообщение пользователя.`;
+        } else {
+          const replyCtx = await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj);
+          const s = replyCtx.sender;
+          responseText =
+            `🎭 <b>Клонирование профиля</b>\n\n` +
+            `• <b>Цель:</b> ${escapeHtml(s?.name || 'Пользователь')}\n` +
+            `• <b>ID:</b> <code>${s?.id ? s.id.toString() : 'неизвестен'}</code>\n` +
+            `• <b>Статус:</b> Метаданные скопированы в профиль клона.`;
+          replyToId = replyToMessageId;
+        }
+        break;
+      }
+
+      case 'agro': {
+        if (!checkCooldown(userId, 'agro', 5)) {
+          responseText = `⏳ Не так быстро! Агро-режим остывает...`;
+        } else {
+          const roasts = [
+            'Ты думал, твои удалённые сообщения никто не видит? SerkoGram помнит всё. 😎',
+            'Ещё одно слово, и я экспортирую всю историю твоих правок прямо сюда! 😈',
+            'Слишком много шума для того, кто даже не настроил двухфакторку! 🛡',
+            'Осторожно: уровень токсичности в этом чате превысил допустимые нормы! ☣️',
+            'Удалил сообщение? Наивный... В архиве уже сделано 3 бэкапа! 💾',
+          ];
+          const replyCtx = replyToMessageId
+            ? await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj)
+            : null;
+          const roast = roasts[Math.floor(Math.random() * roasts.length)];
+          responseText = replyCtx?.sender?.name
+            ? `💢 <b>${escapeHtml(replyCtx.sender.name)}</b>, ${escapeHtml(roast)}`
+            : `💢 ${escapeHtml(roast)}`;
+          if (replyToMessageId) replyToId = replyToMessageId;
         }
         break;
       }

@@ -158,4 +158,54 @@ describe('Dot Command Executor (executeDotCommand)', () => {
     expect(res.status).toBe('SUCCESS');
     expect(res.responseMessage).toContain('Камень, Ножницы, Бумага');
   });
+
+  it('should successfully execute text effects (.flip, .bubble)', async () => {
+    const ctxFlip: ExecuteDotCommandContext = {
+      parsed: parseAnyCommand('.flip hello'),
+      chatId: 'chat_123',
+      telegramChatId: BigInt('100200300'),
+      businessConnectionId: 'bc_test_1',
+      userId: 'user_123',
+      callerTelegramId: BigInt('111222333'),
+      isOwner: true,
+      messageId: 102,
+    };
+
+    const resFlip = await executeDotCommand(ctxFlip);
+    expect(resFlip.status).toBe('SUCCESS');
+    expect(resFlip.responseMessage).toBe('ollǝɥ');
+
+    const ctxBubble: ExecuteDotCommandContext = {
+      parsed: parseAnyCommand('.bubble abc'),
+      chatId: 'chat_123',
+      telegramChatId: BigInt('100200300'),
+      businessConnectionId: 'bc_test_1',
+      userId: 'user_123',
+      callerTelegramId: BigInt('111222333'),
+      isOwner: true,
+      messageId: 103,
+    };
+
+    const resBubble = await executeDotCommand(ctxBubble);
+    expect(resBubble.status).toBe('SUCCESS');
+    expect(resBubble.responseMessage).toBe('ⓐⓑⓒ');
+  });
+
+  it('should format .archive link with scoped telegramChatId', async () => {
+    process.env.NEXT_PUBLIC_APP_URL = 'https://serkogram.vercel.app';
+    const ctx: ExecuteDotCommandContext = {
+      parsed: parseAnyCommand('.archive'),
+      chatId: 'internal_uuid_123',
+      telegramChatId: BigInt('100200300'),
+      businessConnectionId: 'bc_test_1',
+      userId: 'user_123',
+      callerTelegramId: BigInt('111222333'),
+      isOwner: true,
+      messageId: 104,
+    };
+
+    const res = await executeDotCommand(ctx);
+    expect(res.status).toBe('SUCCESS');
+    expect(res.responseMessage).toContain('https://serkogram.vercel.app/archive/100200300');
+  });
 });

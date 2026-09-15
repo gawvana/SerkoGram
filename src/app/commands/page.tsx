@@ -29,6 +29,8 @@ import {
   ExternalLink,
   Copy,
   Check,
+  Clock,
+  Wrench,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -88,8 +90,12 @@ export default function CommandsPage() {
         return ImageIcon;
       case 'fun':
         return Smile;
+      case 'automation':
+        return Clock;
       case 'mirror':
         return Radio;
+      case 'utility':
+        return Wrench;
       default:
         return Terminal;
     }

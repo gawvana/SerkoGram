@@ -1,15 +1,94 @@
 // ============================================================
-// SerkoGram — Connection Service (Adapter Pattern)
-// Provides a unified interface for Business and Chat Automation
+// SerkoGram — Connection Service (Connected Business Bot)
+// Official Telegram Business / Chat Automation Architecture
 // ============================================================
 
 import { prisma } from '@/lib/db';
+import { getBot } from '@/lib/telegram/bot';
 import {
   saveMessage,
   processEditedMessage,
   processDeletedMessages,
 } from './message-service';
 import type { BusinessConnection, Chat, ConnectionStatus } from '@prisma/client';
+
+// ============================================================
+// Real Authoritative Telegram Business Connection State
+// ============================================================
+
+const bcCache = new Map<string, { data: any; expires: number }>();
+
+/**
+ * Fetches the real, authoritative business connection state directly from Telegram Bot API.
+ * Uses a short 60s memory cache to prevent API rate limiting.
+ */
+export async function getRealTelegramBusinessConnection(businessConnectionId: string): Promise<{
+  id: string;
+  user: { id: number; first_name: string; last_name?: string; username?: string; is_premium?: boolean };
+  user_chat_id: number;
+  can_reply: boolean;
+  is_enabled: boolean;
+  date: number;
+} | null> {
+  if (!businessConnectionId) return null;
+
+  const cached = bcCache.get(businessConnectionId);
+  if (cached && cached.expires > Date.now()) {
+    return cached.data;
+  }
+
+  try {
+    const bot = getBot();
+    const bc = await bot.api.getBusinessConnection(businessConnectionId);
+    bcCache.set(businessConnectionId, { data: bc, expires: Date.now() + 60_000 });
+    return bc as any;
+  } catch (err: any) {
+    console.warn('[BusinessConnection] Telegram API getBusinessConnection note:', err?.description || err?.message);
+    return null;
+  }
+}
+
+export interface BusinessRights {
+  canReply: boolean;
+  readMessages: boolean;
+  deleteSentMessages: boolean;
+  deleteReceivedMessages: boolean;
+  isEnabled: boolean;
+}
+
+/**
+ * Checks actual Telegram Business rights for a connection.
+ * Prioritizes authoritative Telegram state over local DB cache.
+ */
+export async function getBusinessRights(
+  connectionId: string,
+  telegramConnectionId?: string
+): Promise<BusinessRights> {
+  if (telegramConnectionId) {
+    const real = await getRealTelegramBusinessConnection(telegramConnectionId);
+    if (real) {
+      return {
+        canReply: Boolean(real.can_reply),
+        readMessages: Boolean(real.is_enabled),
+        deleteSentMessages: Boolean(real.can_reply),
+        deleteReceivedMessages: Boolean(real.can_reply),
+        isEnabled: Boolean(real.is_enabled),
+      };
+    }
+  }
+
+  const conn = await prisma.businessConnection.findUnique({
+    where: { id: connectionId },
+  });
+
+  return {
+    canReply: conn?.canReply ?? false,
+    readMessages: conn?.isEnabled ?? false,
+    deleteSentMessages: conn?.canReply ?? false,
+    deleteReceivedMessages: conn?.canReply ?? false,
+    isEnabled: conn?.isEnabled ?? false,
+  };
+}
 
 // ============================================================
 // Adapter Interface
@@ -33,13 +112,13 @@ export interface ConnectionAdapter {
 }
 
 // ============================================================
-// Business Adapter
+// Real Connected Business Bot Adapter (Official Chat Automation)
 // ============================================================
 
-export class BusinessAdapter implements ConnectionAdapter {
+export class ConnectedBusinessBotAdapter implements ConnectionAdapter {
   async getConnection(userId: string): Promise<BusinessConnection | null> {
     return prisma.businessConnection.findFirst({
-      where: { userId, type: 'BUSINESS' },
+      where: { userId },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -56,28 +135,28 @@ export class BusinessAdapter implements ConnectionAdapter {
       where: { id: connectionId },
     });
 
-    if (!conn) return [];
+    const rights = await getBusinessRights(connectionId, conn?.telegramConnectionId);
 
     return [
       {
         key: 'read_messages',
-        label: 'Чтение сообщений',
-        granted: true,
+        label: 'Чтение сообщений в выбранных чатах',
+        granted: rights.readMessages,
       },
       {
         key: 'receive_deletions',
-        label: 'Получение удалений',
-        granted: true,
+        label: 'Получение удалённых сообщений',
+        granted: rights.readMessages,
       },
       {
         key: 'can_reply',
-        label: 'Отправка ответов',
-        granted: conn.canReply,
+        label: 'Отправка ответов и команд (can_reply)',
+        granted: rights.canReply,
       },
       {
         key: 'selected_chats',
-        label: 'Работа с выбранными чатами',
-        granted: conn.isEnabled,
+        label: 'Активное подключение к Telegram Business',
+        granted: rights.isEnabled,
       },
     ];
   }
@@ -86,7 +165,16 @@ export class BusinessAdapter implements ConnectionAdapter {
     const conn = await prisma.businessConnection.findUnique({
       where: { id: connectionId },
     });
-    return conn?.status ?? 'DISCONNECTED';
+    if (!conn) return 'DISCONNECTED';
+
+    if (conn.telegramConnectionId) {
+      const real = await getRealTelegramBusinessConnection(conn.telegramConnectionId);
+      if (real) {
+        return real.is_enabled ? 'ACTIVE' : 'DISCONNECTED';
+      }
+    }
+
+    return conn.status;
   }
 
   async disconnect(connectionId: string): Promise<void> {
@@ -114,112 +202,20 @@ export class BusinessAdapter implements ConnectionAdapter {
 }
 
 // ============================================================
-// Chat Automation Adapter (Extensible Architecture)
+// Mode D Adapter (Account-Level MTProto Userbot — Unsupported on Serverless)
 // ============================================================
 
-/**
- * Chat Automation adapter.
- *
- * This adapter represents an extensible architecture point for future
- * Telegram Chat Automation capabilities. Currently, general user-level
- * Chat Automation is handled natively through Telegram Business Bot Connection.
- *
- * The adapter implements the uniform ConnectionAdapter interface so that when
- * extended Telegram Bot API capabilities are introduced, no core refactoring
- * is necessary.
- */
-export class ChatAutomationAdapter implements ConnectionAdapter {
-  async getConnection(userId: string): Promise<BusinessConnection | null> {
-    return prisma.businessConnection.findFirst({
-      where: { userId, type: 'CHAT_AUTOMATION' },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
-  async getChats(connectionId: string): Promise<Chat[]> {
-    return prisma.chat.findMany({
-      where: { connectionId },
-      orderBy: { lastMessageAt: 'desc' },
-    });
-  }
-
-  async getPermissions(_connectionId: string): Promise<ConnectionPermission[]> {
-    return [
-      {
-        key: 'read_messages',
-        label: 'Чтение сообщений',
-        granted: false,
-      },
-      {
-        key: 'receive_deletions',
-        label: 'Получение удалений',
-        granted: false,
-      },
-      {
-        key: 'automation',
-        label: 'Автоматизация',
-        granted: false,
-      },
-    ];
-  }
-
-  async getStatus(connectionId: string): Promise<ConnectionStatus> {
-    const conn = await prisma.businessConnection.findUnique({
-      where: { id: connectionId },
-    });
-    return conn?.status ?? 'DISCONNECTED';
-  }
-
-  async disconnect(connectionId: string): Promise<void> {
-    await prisma.businessConnection.update({
-      where: { id: connectionId },
-      data: {
-        status: 'DISCONNECTED',
-        isEnabled: false,
-        disconnectedAt: new Date(),
-      },
-    });
-  }
-
-  async processMessage(chatId: string, messageData: any): Promise<any> {
-    return saveMessage({ ...messageData, chatId });
-  }
-
-  async processEdit(chatId: string, editData: any): Promise<void> {
-    await processEditedMessage({ ...editData, chatId });
-  }
-
-  async processDelete(chatId: string, messageIds: number[]): Promise<void> {
-    await processDeletedMessages(chatId, messageIds, new Date());
-  }
-}
-
-// ============================================================
-// Account Automation Adapter (Mode B — MTProto / Session Architecture)
-// ============================================================
-
-/**
- * Account Automation adapter (Mode D — MTProto Userbot).
- * Honestly represents userbot status: unsupported on serverless infrastructure
- * without a dedicated stateful MTProto worker daemon.
- */
 export class AccountAutomationAdapter implements ConnectionAdapter {
-  async getConnection(userId: string): Promise<BusinessConnection | null> {
-    return prisma.businessConnection.findFirst({
-      where: { userId, type: 'CHAT_AUTOMATION' },
-      orderBy: { createdAt: 'desc' },
-    });
+  async getConnection(_userId: string): Promise<BusinessConnection | null> {
+    return null;
   }
 
   async getAccount(_userId: string) {
     return null;
   }
 
-  async getChats(connectionId: string): Promise<Chat[]> {
-    return prisma.chat.findMany({
-      where: { connectionId },
-      orderBy: { lastMessageAt: 'desc' },
-    });
+  async getChats(_connectionId: string): Promise<Chat[]> {
+    return [];
   }
 
   async getPermissions(_connectionId: string): Promise<ConnectionPermission[]> {
@@ -231,38 +227,28 @@ export class AccountAutomationAdapter implements ConnectionAdapter {
       },
       {
         key: 'read_dialogs',
-        label: 'Чтение всех личных диалогов (Доступно через Telegram Business)',
+        label: 'Чтение личных диалогов (Работает через Telegram Business)',
         granted: false,
       },
       {
         key: 'dot_commands',
-        label: 'Точечные команды (.) в чатах (Поддерживаются через Telegram Business Bot)',
+        label: 'Точечные команды (.) в чатах (Работают через Telegram Business Bot)',
         granted: true,
       },
       {
         key: 'ephemeral_save',
-        label: 'Сохранение одноразовых фото/видео (Через Telegram Business Bot)',
+        label: 'Сохранение одноразовых фото/видео (Работает через Telegram Business Bot)',
         granted: true,
       },
     ];
   }
 
-  async getStatus(connectionId: string): Promise<ConnectionStatus> {
-    const conn = await prisma.businessConnection.findUnique({
-      where: { id: connectionId },
-    });
-    return conn?.status ?? 'DISCONNECTED';
+  async getStatus(_connectionId: string): Promise<ConnectionStatus> {
+    return 'DISCONNECTED';
   }
 
-  async disconnect(connectionId: string): Promise<void> {
-    await prisma.businessConnection.update({
-      where: { id: connectionId },
-      data: {
-        status: 'DISCONNECTED',
-        isEnabled: false,
-        disconnectedAt: new Date(),
-      },
-    });
+  async disconnect(_connectionId: string): Promise<void> {
+    // No-op for unsupported MTProto
   }
 
   async processMessage(chatId: string, messageData: any): Promise<any> {
@@ -278,6 +264,10 @@ export class AccountAutomationAdapter implements ConnectionAdapter {
   }
 }
 
+// Backward-compatible alias
+export const BusinessAdapter = ConnectedBusinessBotAdapter;
+export const ChatAutomationAdapter = ConnectedBusinessBotAdapter;
+
 // ============================================================
 // Factory
 // ============================================================
@@ -285,12 +275,11 @@ export class AccountAutomationAdapter implements ConnectionAdapter {
 export function getAdapter(type: 'BUSINESS' | 'CHAT_AUTOMATION' | 'ACCOUNT'): ConnectionAdapter {
   switch (type) {
     case 'BUSINESS':
-      return new BusinessAdapter();
     case 'CHAT_AUTOMATION':
-      return new ChatAutomationAdapter();
+      return new ConnectedBusinessBotAdapter();
     case 'ACCOUNT':
       return new AccountAutomationAdapter();
     default:
-      return new BusinessAdapter();
+      return new ConnectedBusinessBotAdapter();
   }
 }
