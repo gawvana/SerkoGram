@@ -1,14 +1,40 @@
-# PROGRESS CHECKPOINT — SerkoGram Master Production Upgrade
+# PROGRESS CHECKPOINT — SerkoGram Master Production Upgrade & Liquid Glass UI
 
-**Timestamp**: 2026-09-15 12:46 (UTC+5)  
-**Branch**: `main` (`bfa6464`)  
-**Deployment**: `https://serkogram.vercel.app` (`dpl_BDSXVL2T3BgomfhRnnxWnXk6rKLS`)  
+**Timestamp**: 2026-09-15 13:58 (UTC+5)  
+**Branch**: `main` (`5ccea11`)  
+**Deployment**: `https://serkogram.vercel.app` (`dpl_367wcpFEaCxoRi9ZtNBzaR56yc9W`)  
 **Bot Username**: `@SerkoGram_bot` (ID: 8904714820, `can_connect_to_business: true`)  
-**Status**: 🟡 **REAL E2E BLOCKED** (Production live, awaiting user test from real Telegram client in managed chat)  
-**Test Suite**: 18 files, 126 tests — **100% PASS**  
+**Status**: 🟡 **REAL E2E BLOCKED** (Production live & hardened, awaiting user test from real Telegram client in managed chat)  
+**Test Suite**: 19 files, 135 tests — **100% PASS**  
 **TypeScript**: `tsc --noEmit` — **0 errors**  
+**Lint**: `next lint` — **0 errors / warnings**  
 **Production Build**: Next.js 15.5.25 — **14 static pages, 28 API routes compiled**  
 **Webhook Queue**: `pending_update_count: 0`  
+
+---
+
+## 1. Новые улучшения (Liquid Glass UI, AnimationEngine & Interactive Controls)
+
+### A. AnimationEngine (`src/lib/services/animation-service.ts`)
+- Реализован переиспользуемый движок покадровых анимаций сообщений Telegram (`AnimationService`).
+- Пресеты анимаций: `.p` (терминальная загрузка и пиксельный баннер), `.love` (биение сердец), `.love2` (радужная волна), `.-7` (таймер Канеки 1000-7), `.heart`, `.plove`.
+- Блокировка от гонок и повторных вызовов, безопасные интервалы (700-750 мс) против Telegram 429 Flood Wait, мягкое прерывание при удалении сообщений.
+- Защита от self-loop: редактирование сообщений не перезапускает парсер команд.
+
+### B. Command Message Cleanup (Очистка чата)
+- При отправке команд управления (`.mute`, `.unmute`, `.panic`, `.unpanic`) в управляемом чате бот автоматически удаляет сообщение с командой владельца при наличии прав (`can_delete_outgoing_messages` / `can_delete_all_messages`), предотвращая засорение диалога техническими символами.
+
+### C. Интерактивные кнопки управления (No .unmute Required)
+- После вызова `.mute` бот прикрепляет InlineKeyboard: `[ 🔊 Размутить ]  [ ⚙ Настройки ]`.
+- Нажатие на кнопку размучивает диалог на лету через `callback_query`, обновляет состояние в PostgreSQL и переключает кнопку на `[ 🔇 Включить мут ]`.
+- Hard Security Guard: если собеседник пытается нажать на кнопку модерации владельца, Telegram отображает предупреждение: `⛔ Только владелец чата может управлять этим режимом`.
+- Аналогичный интерактивный флоу реализован для `.panic` (`[ 🛑 Отключить Panic ]` / `[ 🚨 Включить Panic ]`) и `.перевод` (`[ 🌐 Выключить перевод ]`).
+
+### D. Apple Liquid Glass UI Редизайн Mini App
+- `BottomNav.tsx`: полупрозрачный Liquid Glass акрил (`bg-[#0a0a0e]/75 backdrop-blur-2xl`), верхняя световая фаска, ровно 5 элементов с Командами в центре, нативные микроинтеракции `active:scale-[0.94]`.
+- `Header.tsx`: Liquid Glass шапка с адаптацией под безопасные зоны iOS/Android `pt-safe-top`.
+- `MessageBubble.tsx`: премиальный вид Telegram + Apple Messages, градиентные стеклянные пузыри исходящих сообщений с мягким фиолетовым свечением и темные frosted-стеклянные входящие карточки.
+- Расширен каталог команд (`/commands`): добавлены `.spoiler` (нативный `<tg-spoiler>`), `.heart`, `.plove`, `.flip` (полная кириллица), `.bubble`, `.dumb`, `.leet`, `.zalgo` (с защитой от переполнения буфера). Все 72 команды доступны через API и каталог.
 
 ---
 
