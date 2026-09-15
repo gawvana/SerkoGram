@@ -68,12 +68,12 @@ export function MessageBubble({ msg }: MessageBubbleProps) {
   return (
     <div className={`flex w-full mb-2.5 ${isOut ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-3 relative shadow-sm transition-all ${
+        className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-3 relative transition-all ${
           isDeleted
-            ? 'bg-red-950/30 border border-red-500/30 text-sg-text-primary rounded-bl-sm'
+            ? 'bg-red-500/[0.08] backdrop-blur-md border border-red-500/25 text-zinc-100 rounded-bl-sm shadow-sm'
             : isOut
-            ? 'bg-sg-purple text-white rounded-br-sm'
-            : 'bg-sg-surface-2 text-white border border-sg-border rounded-bl-sm'
+            ? 'bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] text-white rounded-br-sm shadow-[0_2px_12px_rgba(139,92,246,0.25)] border border-white/20'
+            : 'bg-[#18181d]/85 backdrop-blur-md text-zinc-100 border border-white/[0.08] rounded-bl-sm shadow-sm'
         }`}
       >
         {/* Deleted Message Header */}

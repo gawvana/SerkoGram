@@ -8,7 +8,8 @@ import { getCommandByName, isAiProviderConfigured } from './registry';
 import { resolveReplyContext } from './reply-context';
 import { saveEphemeralMedia } from '@/lib/services/ephemeral-service';
 import { ownerNotificationService } from '@/lib/services/owner-notification-service';
-import { chatAutomation } from '@/lib/services/connection-service';
+import { chatAutomation, getBusinessRights } from '@/lib/services/connection-service';
+import { animationService } from '@/lib/services/animation-service';
 import {
   toFlip,
   toBubble,
@@ -166,6 +167,7 @@ export async function executeDotCommand(
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || '';
   let responseText: string | null = null;
   let replyToId: number | undefined = undefined;
+  let customReplyMarkup: any = undefined;
 
   try {
     switch (parsed.command) {
@@ -646,6 +648,7 @@ export async function executeDotCommand(
         const minutes = parseInt(durationArg, 10);
         const safeMins = isNaN(minutes) || minutes < 1 ? 15 : Math.min(minutes, 1440);
         const muteUntil = new Date(Date.now() + safeMins * 60 * 1000);
+        const targetOwnerId = (ctx.ownerTelegramId || ctx.callerTelegramId).toString();
 
         // Toggle off if already muted and user sends .mute off or .unmute
         if (isOff) {
@@ -656,6 +659,14 @@ export async function executeDotCommand(
           responseText =
             `🔇 <b>Ограничение снято</b>\n\n` +
             `Входящие сообщения собеседника больше не удаляются автоматически.`;
+          customReplyMarkup = {
+            inline_keyboard: [
+              [
+                { text: '🔇 Включить мут', callback_data: `mute:mute:${chatId}:${targetOwnerId}` },
+                ...(appUrl ? [{ text: '⚙ Настройки', web_app: { url: `${appUrl}/settings` } }] : []),
+              ],
+            ],
+          };
         } else {
           await chatAutomation.setChatSettings(chatId, {
             muteEnabled: true,
@@ -665,6 +676,14 @@ export async function executeDotCommand(
             `🔇 <b>Ограничение диалога активировано</b>\n\n` +
             `Входящие сообщения собеседника будут автоматически удаляться на <b>${safeMins} мин.</b>\n` +
             `Снять: <code>.mute off</code> или <code>.unmute</code>`;
+          customReplyMarkup = {
+            inline_keyboard: [
+              [
+                { text: '🔊 Размутить', callback_data: `mute:unmute:${chatId}:${targetOwnerId}` },
+                ...(appUrl ? [{ text: '⚙ Настройки', web_app: { url: `${appUrl}/settings` } }] : []),
+              ],
+            ],
+          };
         }
         break;
       }
@@ -673,20 +692,27 @@ export async function executeDotCommand(
       case 'panic': {
         const arg = parsed.rawArguments?.trim()?.toLowerCase();
         const isOff = arg === 'off' || parsed.command === 'unpanic';
-        const targetOwnerId = ctx.ownerTelegramId || ctx.callerTelegramId;
+        const targetOwnerId = (ctx.ownerTelegramId || ctx.callerTelegramId).toString();
 
         if (isOff) {
           await chatAutomation.setChatSettings(chatId, { panicEnabled: false });
           responseText =
             `🟢 <b>Режим PANIC отключён</b>\n\n` +
             `Диалог возвращён в нормальный режим.`;
+          customReplyMarkup = {
+            inline_keyboard: [
+              [
+                { text: '🚨 Включить Panic', callback_data: `panic:enable:${chatId}:${targetOwnerId}` },
+              ],
+            ],
+          };
         } else {
           await chatAutomation.setChatSettings(chatId, { panicEnabled: true });
 
           // Notify owner privately
           await ownerNotificationService.notifyCommandResult({
             userId,
-            telegramUserId: targetOwnerId,
+            telegramUserId: BigInt(targetOwnerId),
             command: '.panic',
             title: '🚨 PANIC MODE активирован',
             text: `Экстренный режим включён для чата «${escapeHtml(ctx.chatTitle || 'Диалог')}». Все входящие сообщения будут автоматически удаляться. Отключить: .panic off`,
@@ -699,6 +725,13 @@ export async function executeDotCommand(
             `• Все входящие сообщения собеседника удаляются автоматически.\n` +
             `• Команды владельца продолжают обрабатываться.\n` +
             `• Отключить: <code>.panic off</code>`;
+          customReplyMarkup = {
+            inline_keyboard: [
+              [
+                { text: '🛑 Отключить Panic', callback_data: `panic:disable:${chatId}:${targetOwnerId}` },
+              ],
+            ],
+          };
         }
         break;
       }
@@ -1109,8 +1142,43 @@ export async function executeDotCommand(
           parse_mode: 'HTML',
           business_connection_id: businessConnectionId,
           reply_parameters: replyToId ? { message_id: replyToId } : undefined,
+          reply_markup: customReplyMarkup,
         });
         sentMessageId = sent.message_id;
+
+        // Command Message Cleanup: For control commands (.mute, .panic, etc.), delete owner's command message
+        if (['mute', 'unmute', 'panic', 'unpanic'].includes(parsed.command)) {
+          if (ctx.isOwner && ctx.messageId && businessConnectionId) {
+            try {
+              const rights = await getBusinessRights('', businessConnectionId);
+              if (rights.canDeleteOutgoingMessages || rights.canDeleteAllMessages) {
+                await bot.api.deleteMessage(telegramChatId.toString(), ctx.messageId).catch(() => null);
+              }
+            } catch {
+              // Non-critical cleanup
+            }
+          }
+        }
+
+        // Animation execution
+        if (sentMessageId && ['p', 'love', 'love2', '-7', 'heart', 'plove'].includes(parsed.command)) {
+          try {
+            const frames = animationService.getPresetFrames(parsed.command, parsed.rawArguments);
+            if (frames.length > 1) {
+              animationService.start({
+                animationId: `${chatId}:${sentMessageId}`,
+                chatId,
+                telegramChatId,
+                messageId: sentMessageId,
+                ownerTelegramId: ctx.ownerTelegramId || ctx.callerTelegramId,
+                businessConnectionId,
+                frames,
+              });
+            }
+          } catch (animErr) {
+            console.warn('[Animation] Could not start animation sequence:', animErr);
+          }
+        }
       } catch (tgErr: any) {
         // If bot blocked or cannot send message, log warning
         console.warn('[DotCommand] Could not send reply to chat:', telegramChatId.toString(), tgErr.description);

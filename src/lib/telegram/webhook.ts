@@ -611,6 +611,163 @@ async function handleCallbackQuery(update: Update): Promise<void> {
     return;
   }
 
+  // ------------------------------------------------------------
+  // Interactive Moderation & Automation Callbacks
+  // Security check: only authoritative owner of the connection/chat can trigger!
+  // Format: action:subAction:targetChatId:ownerTelegramId
+  // ------------------------------------------------------------
+  if (
+    query.data.startsWith('mute:') ||
+    query.data.startsWith('panic:') ||
+    query.data.startsWith('tr:') ||
+    query.data.startsWith('agpt:')
+  ) {
+    const parts = query.data.split(':');
+    const action = parts[0];
+    const subAction = parts[1];
+    const targetChatId = parts[2];
+    const expectedOwnerId = parts[3];
+    const callerTelegramId = query.from?.id ? query.from.id.toString() : '';
+
+    // Hard Security Guard: Verify caller is owner
+    if (expectedOwnerId && callerTelegramId && expectedOwnerId !== callerTelegramId) {
+      await bot.api.answerCallbackQuery(query.id, {
+        text: '⛔ Только владелец чата может управлять этим режимом.',
+        show_alert: true,
+      }).catch(() => null);
+      return;
+    }
+
+    if (action === 'mute') {
+      if (subAction === 'unmute') {
+        await chatAutomation.setChatSettings(targetChatId, {
+          muteEnabled: false,
+          muteUntil: null,
+        });
+
+        await bot.api.editMessageText(
+          chatId,
+          messageId,
+          `🔊 <b>Ограничение диалога отключено</b>\n\nВходящие сообщения собеседника больше не удаляются.`,
+          {
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '🔇 Включить мут (15 мин)', callback_data: `mute:mute:${targetChatId}:${expectedOwnerId}` },
+                  ...(appUrl ? [{ text: '⚙ Настройки', web_app: { url: `${appUrl}/settings` } }] : []),
+                ],
+              ],
+            },
+          }
+        ).catch(() => null);
+
+        await bot.api.answerCallbackQuery(query.id, {
+          text: '🔊 Мут отключён',
+        }).catch(() => null);
+        return;
+      }
+
+      if (subAction === 'mute') {
+        const muteUntil = new Date(Date.now() + 15 * 60 * 1000);
+        await chatAutomation.setChatSettings(targetChatId, {
+          muteEnabled: true,
+          muteUntil,
+        });
+
+        await bot.api.editMessageText(
+          chatId,
+          messageId,
+          `🔇 <b>Режим Mute активирован (15 мин)</b>\n\nВходящие сообщения собеседника удаляются автоматически.`,
+          {
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '🔊 Размутить', callback_data: `mute:unmute:${targetChatId}:${expectedOwnerId}` },
+                  ...(appUrl ? [{ text: '⚙ Настройки', web_app: { url: `${appUrl}/settings` } }] : []),
+                ],
+              ],
+            },
+          }
+        ).catch(() => null);
+
+        await bot.api.answerCallbackQuery(query.id, {
+          text: '🔇 Мут включён на 15 минут',
+        }).catch(() => null);
+        return;
+      }
+    }
+
+    if (action === 'panic') {
+      if (subAction === 'enable') {
+        await chatAutomation.setChatSettings(targetChatId, { panicEnabled: true });
+
+        await bot.api.editMessageText(
+          chatId,
+          messageId,
+          `🚨 <b>PANIC MODE АКТИВИРОВАН</b>\n\n• Фильтрация всех входящих сообщений включена.\n• Автоматические функции приостановлены.`,
+          {
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '🛑 Отключить Panic', callback_data: `panic:disable:${targetChatId}:${expectedOwnerId}` },
+                ],
+              ],
+            },
+          }
+        ).catch(() => null);
+
+        await bot.api.answerCallbackQuery(query.id, {
+          text: '🚨 Panic mode активирован',
+        }).catch(() => null);
+        return;
+      }
+
+      if (subAction === 'disable' || subAction === 'cancel') {
+        await chatAutomation.setChatSettings(targetChatId, { panicEnabled: false });
+
+        await bot.api.editMessageText(
+          chatId,
+          messageId,
+          `🛡 <b>Экстренный режим отключён</b>\n\nДиалог возвращён в нормальный режим.`,
+          {
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '🚨 Включить Panic', callback_data: `panic:enable:${targetChatId}:${expectedOwnerId}` },
+                ],
+              ],
+            },
+          }
+        ).catch(() => null);
+
+        await bot.api.answerCallbackQuery(query.id, {
+          text: '🛡 Экстренный режим отключён',
+        }).catch(() => null);
+        return;
+      }
+    }
+
+    if (action === 'tr' && subAction === 'off') {
+      await chatAutomation.setChatSettings(targetChatId, { autoTranslateLang: null });
+
+      await bot.api.editMessageText(
+        chatId,
+        messageId,
+        `🌐 <b>Автоперевод отключён</b>\n\nПеревод входящих сообщений деактивирован.`,
+        { parse_mode: 'HTML' }
+      ).catch(() => null);
+
+      await bot.api.answerCallbackQuery(query.id, {
+        text: 'Перевод отключён',
+      }).catch(() => null);
+      return;
+    }
+  }
+
   switch (query.data) {
     case 'connect':
       await bot.api.sendMessage(

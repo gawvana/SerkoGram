@@ -17,7 +17,7 @@ const FLIP_MAP: Record<string, string> = {
   з: 'ε', и: 'и', й: 'и', к: 'ʞ', л: 'v', м: 'w', н: 'н', о: 'о',
   п: 'u', р: 'd', с: 'ɔ', т: 'ʇ', у: 'ʎ', ф: 'ф', х: 'х', ц: 'п',
   ч: 'h', ш: 'm', щ: 'm', ъ: 'q', ы: 'ıq', ь: 'q', э: 'є', ю: 'оı',
-  я: 'в',
+  я: 'ʁ',
   '1': '⇂', '2': 'ᄅ', '3': 'Ɛ', '4': 'ㄣ', '5': 'ϛ', '6': '9', '7': 'ㄥ',
   '8': '8', '9': '6', '0': '0', '.': '˙', ',': '\'', '?': '¿', '!': '¡',
 };
@@ -33,6 +33,17 @@ const BUBBLE_MAP: Record<string, string> = {
   Y: 'Ⓨ', Z: 'Ⓩ',
   '0': '⓪', '1': '①', '2': '②', '3': '③', '4': '④', '5': '⑤',
   '6': '⑥', '7': '⑦', '8': '⑧', '9': '⑨',
+  // Cyrillic phonetic circled equivalents
+  а: 'ⓐ', б: 'ⓑ', в: 'ⓥ', г: 'ⓖ', д: 'ⓓ', е: 'ⓔ', ё: 'ⓔ', ж: 'ⓩ',
+  з: 'ⓩ', и: 'ⓘ', й: 'ⓘ', к: 'ⓚ', л: 'ⓛ', м: 'ⓜ', н: 'ⓝ', о: 'ⓞ',
+  п: 'ⓟ', р: 'ⓡ', с: 'ⓢ', т: 'ⓣ', у: 'ⓤ', ф: 'ⓕ', х: 'ⓧ', ц: 'ⓒ',
+  ч: 'ⓒ', ш: 'ⓦ', щ: 'ⓦ', ъ: 'ⓑ', ы: 'ⓨ', ь: 'ⓑ', э: 'ⓔ', ю: 'ⓤ',
+  я: 'ⓡ',
+  А: 'Ⓐ', Б: 'Ⓑ', В: 'Ⓥ', Г: 'Ⓖ', Д: 'Ⓓ', Е: 'Ⓔ', Ё: 'Ⓔ', Ж: 'Ⓩ',
+  З: 'Ⓩ', И: 'Ⓘ', Й: 'Ⓘ', К: 'Ⓚ', Л: 'Ⓛ', М: 'Ⓜ', Н: 'Ⓝ', О: 'Ⓞ',
+  П: 'Ⓟ', Р: 'Ⓡ', С: 'Ⓢ', Т: 'Ⓣ', У: 'Ⓤ', Ф: 'Ⓕ', Х: 'Ⓧ', Ц: 'Ⓒ',
+  Ч: 'Ⓒ', Ш: 'Ⓦ', Щ: 'Ⓦ', Ъ: 'Ⓑ', Ы: 'Ⓨ', Ь: 'Ⓑ', Э: 'Ⓔ', Ю: 'Ⓤ',
+  Я: 'Ⓡ',
 };
 
 const LEET_MAP: Record<string, string> = {
@@ -75,10 +86,12 @@ export function toLeet(text: string): string {
 }
 
 export function toZalgo(text: string): string {
-  return text
+  // Cap at 200 chars to avoid memory exhaustion or breaking Telegram entity limits
+  const safeText = text.slice(0, 200);
+  return safeText
     .split('')
     .map((c) => {
-      if (c === ' ') return c;
+      if (c === ' ' || c === '\n') return c;
       const up = ZALGO_UP[Math.floor(Math.random() * ZALGO_UP.length)];
       const down = ZALGO_DOWN[Math.floor(Math.random() * ZALGO_DOWN.length)];
       return c + up + down;
@@ -88,6 +101,15 @@ export function toZalgo(text: string): string {
 
 export function toNoSpace(text: string): string {
   return text.replace(/\s+/g, '');
+}
+
+export function toSpoiler(text: string): string {
+  // Telegram HTML native spoiler
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return `<tg-spoiler>${escaped}</tg-spoiler>`;
 }
 
 export function toAsciiArt(text: string): string {
