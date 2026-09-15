@@ -208,4 +208,106 @@ describe('Dot Command Executor (executeDotCommand)', () => {
     expect(res.status).toBe('SUCCESS');
     expect(res.responseMessage).toContain('https://serkogram.vercel.app/archive/100200300');
   });
+
+  it('should execute animation commands (.p, .love, .love2, .-7)', async () => {
+    const baseCtx = {
+      chatId: 'chat_123',
+      telegramChatId: BigInt('100200300'),
+      businessConnectionId: 'bc_test_1',
+      userId: 'user_123',
+      callerTelegramId: BigInt('111222333'),
+      isOwner: true,
+      messageId: 200,
+    };
+
+    // .p
+    const resP = await executeDotCommand({ ...baseCtx, parsed: parseAnyCommand('.p') });
+    expect(resP.status).toBe('SUCCESS');
+    expect(resP.responseMessage).toContain('SERKOGRAM CHAT AUTOMATION');
+
+    // .love
+    const resLove = await executeDotCommand({ ...baseCtx, parsed: parseAnyCommand('.love') });
+    expect(resLove.status).toBe('SUCCESS');
+    expect(resLove.responseMessage).toContain('Я тебя люблю!');
+
+    // .love2
+    const resLove2 = await executeDotCommand({ ...baseCtx, parsed: parseAnyCommand('.love2') });
+    expect(resLove2.status).toBe('SUCCESS');
+    expect(resLove2.responseMessage).toContain('Люблю тебя');
+
+    // .-7
+    const resMinus7 = await executeDotCommand({ ...baseCtx, parsed: parseAnyCommand('.-7') });
+    expect(resMinus7.status).toBe('SUCCESS');
+    expect(resMinus7.responseMessage).toContain('1000 - 7');
+    expect(resMinus7.responseMessage).toContain('7 - 7 = 0');
+  });
+
+  it('should execute .tyuring test', async () => {
+    const ctx: ExecuteDotCommandContext = {
+      parsed: parseAnyCommand('.tyuring'),
+      chatId: 'chat_123',
+      telegramChatId: BigInt('100200300'),
+      businessConnectionId: 'bc_test_1',
+      userId: 'user_123',
+      callerTelegramId: BigInt('111222333'),
+      isOwner: true,
+      messageId: 205,
+    };
+
+    const res = await executeDotCommand(ctx);
+    expect(res.status).toBe('SUCCESS');
+    expect(res.responseMessage).toContain('Тест Тьюринга');
+  });
+
+  it('should explicitly reject privacy-violating .dox and .deanon commands', async () => {
+    const ctx: ExecuteDotCommandContext = {
+      parsed: parseAnyCommand('.dox'),
+      chatId: 'chat_123',
+      telegramChatId: BigInt('100200300'),
+      businessConnectionId: 'bc_test_1',
+      userId: 'user_123',
+      callerTelegramId: BigInt('111222333'),
+      isOwner: true,
+      messageId: 206,
+    };
+
+    const res = await executeDotCommand(ctx);
+    expect(res.status).toBe('CANCELLED');
+    expect(res.errorCode).toBe('COMMAND_DISABLED');
+    expect(res.responseMessage).toContain('строго запрещён');
+  });
+
+  it('should track warnings with .warn and signal threshold', async () => {
+    const ctx: ExecuteDotCommandContext = {
+      parsed: parseAnyCommand('.warn Спам в чате'),
+      chatId: 'chat_warn_test',
+      telegramChatId: BigInt('100200300'),
+      businessConnectionId: 'bc_test_1',
+      userId: 'user_123',
+      callerTelegramId: BigInt('111222333'),
+      isOwner: true,
+      messageId: 207,
+    };
+
+    const res = await executeDotCommand(ctx);
+    expect(res.status).toBe('SUCCESS');
+    expect(res.responseMessage).toContain('Предупреждение [1/3]');
+  });
+
+  it('should update auto-translate settings with .перевод', async () => {
+    const ctx: ExecuteDotCommandContext = {
+      parsed: parseAnyCommand('.перевод es'),
+      chatId: 'chat_tr_test',
+      telegramChatId: BigInt('100200300'),
+      businessConnectionId: 'bc_test_1',
+      userId: 'user_123',
+      callerTelegramId: BigInt('111222333'),
+      isOwner: true,
+      messageId: 208,
+    };
+
+    const res = await executeDotCommand(ctx);
+    expect(res.status).toBe('SUCCESS');
+    expect(res.responseMessage).toContain('переключён на: <b>es</b>');
+  });
 });

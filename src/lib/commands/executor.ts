@@ -7,6 +7,7 @@ import { getBot } from '@/lib/telegram/bot';
 import { getCommandByName, isAiProviderConfigured } from './registry';
 import { resolveReplyContext } from './reply-context';
 import { saveEphemeralMedia } from '@/lib/services/ephemeral-service';
+import { chatAutomation } from '@/lib/services/connection-service';
 import {
   toFlip,
   toBubble,
@@ -86,19 +87,50 @@ export async function executeDotCommand(
     replyToMessageObj,
   } = ctx;
 
+  const bot = getBot();
+
   // 1. Check self-trigger protection
   const botId = Number(process.env.TELEGRAM_BOT_TOKEN?.split(':')[0] || '0');
   if (botId > 0 && callerTelegramId === BigInt(botId)) {
     return { status: 'CANCELLED', errorCode: 'SELF_TRIGGER_PREVENTED' };
   }
 
+  // 1b. Check explicitly banned privacy-violating commands (.dox, .deanon, .osint)
+  if (['dox', 'deanon', 'osint'].includes(parsed.command)) {
+    const responseText = `🚫 <b>Команда недоступна</b>\n\nСбор персональных данных строго запрещён политикой безопасности SerkoGram и Telegram ToS.`;
+    try {
+      await bot.api.sendMessage(telegramChatId.toString(), responseText, {
+        parse_mode: 'HTML',
+        business_connection_id: businessConnectionId,
+      });
+    } catch (e: any) {
+      console.warn('[DotCommand] Could not send disabled notice:', e?.message);
+    }
+    return { status: 'CANCELLED', errorCode: 'COMMAND_DISABLED', responseMessage: responseText };
+  }
+
   // 2. Command definition lookup
-  const commandDef = getCommandByName(parsed.command, '.');
+  const commandDef = getCommandByName(parsed.command, parsed.prefix || '.');
   if (!commandDef) {
     return { status: 'CANCELLED', errorCode: 'UNKNOWN_COMMAND' };
   }
 
-  // 3. Check authorization: only connection owner may run dot commands in chat
+  // 3. Check if command is explicitly disabled (e.g. .dox, .deanon)
+  if (!commandDef.enabled) {
+    const reason = commandDef.disabledReason || 'Команда отключена политикой безопасности SerkoGram.';
+    const responseText = `🚫 <b>Команда недоступна</b>\n\n${escapeHtml(reason)}`;
+    try {
+      await bot.api.sendMessage(telegramChatId.toString(), responseText, {
+        parse_mode: 'HTML',
+        business_connection_id: businessConnectionId,
+      });
+    } catch (e: any) {
+      console.warn('[DotCommand] Could not send disabled notice:', e?.message);
+    }
+    return { status: 'CANCELLED', errorCode: 'COMMAND_DISABLED', responseMessage: responseText };
+  }
+
+  // 4. Check authorization: only connection owner may run commands in chat
   if (!isOwner) {
     return { status: 'CANCELLED', errorCode: 'UNAUTHORIZED_CALLER' };
   }
@@ -127,7 +159,6 @@ export async function executeDotCommand(
     },
   }).catch(() => null);
 
-  const bot = getBot();
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || '';
   let responseText: string | null = null;
   let replyToId: number | undefined = undefined;
@@ -323,7 +354,20 @@ export async function executeDotCommand(
         if (!textToTranslate) {
           responseText = `🌐 <b>Переводчик</b>\nИспользуйте: <code>.tr en Привет</code> или отправьте <code>.tr en</code> в ответ на сообщение.`;
         } else {
-          responseText = `🌐 <b>Перевод [${escapeHtml(targetLang.toUpperCase())}]:</b>\n\n<i>${escapeHtml(textToTranslate)}</i>`;
+          let translatedText = textToTranslate;
+          try {
+            const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(textToTranslate)}&langpair=auto|${targetLang}`;
+            const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+            if (res.ok) {
+              const data = await res.json();
+              if (data?.responseData?.translatedText) {
+                translatedText = data.responseData.translatedText;
+              }
+            }
+          } catch (e: any) {
+            console.warn('[DotCommand] MyMemory translation error:', e?.message);
+          }
+          responseText = `🌐 <b>Перевод [${escapeHtml(targetLang.toUpperCase())}]:</b>\n\n<i>${escapeHtml(translatedText)}</i>`;
           if (replyToMessageId) replyToId = replyToMessageId;
         }
         break;
@@ -334,8 +378,10 @@ export async function executeDotCommand(
         if (!lang) {
           responseText = `🌐 <b>Перевод сообщений</b>\nУкажите язык: <code>.перевод en</code> или <code>.перевод off</code> для отключения.`;
         } else if (lang === 'off') {
+          chatAutomation.setChatSettings(chatId, { autoTranslateLang: null });
           responseText = `🌐 Автоматический перевод сообщений в этом чате <b>отключён</b>.`;
         } else {
+          chatAutomation.setChatSettings(chatId, { autoTranslateLang: lang });
           responseText = `🌐 Автоматический перевод сообщений в этом чате переключён на: <b>${escapeHtml(lang)}</b>.`;
         }
         break;
@@ -348,7 +394,7 @@ export async function executeDotCommand(
         if (!replyToMessageId) {
           responseText = `ℹ️ Команда <code>.save</code> используется <b>в ответ</b> на сообщение или медиафайл (включая одноразовые фото/видео).`;
         } else {
-          const res = await saveEphemeralMedia(chatId, replyToMessageId, userId);
+          const res = await saveEphemeralMedia(chatId, replyToMessageId, userId, replyToMessageObj);
           responseText = res.success
             ? `✅ <b>Медиафайл сохранён!</b>\n${escapeHtml(res.message)}`
             : `⚠️ ${escapeHtml(res.message)}`;
@@ -428,13 +474,17 @@ export async function executeDotCommand(
         const replyCtx = replyToMessageId
           ? await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj)
           : null;
+        const targetUserId = replyCtx?.sender?.id ? replyCtx.sender.id.toString() : 'unknown';
         const targetName = replyCtx?.sender?.name || 'Собеседник';
         const reason = parsed.rawArguments?.trim() || 'Нарушение правил общения';
+        const warnResult = chatAutomation.addWarning(chatId, targetUserId, reason);
         responseText =
-          `⚠️ <b>Предупреждение [1/3]</b>\n\n` +
+          `⚠️ <b>Предупреждение [${warnResult.count}/${warnResult.threshold}]</b>\n\n` +
           `Пользователь: <b>${escapeHtml(targetName)}</b>\n` +
           `Причина: <i>${escapeHtml(reason)}</i>\n\n` +
-          `<i>При накоплении 3 предупреждений диалог будет помечен на архивацию.</i>`;
+          (warnResult.exceeded
+            ? `🚨 <b>Лимит предупреждений превышен!</b> Рекомендуется ограничить диалог.`
+            : `<i>При накоплении ${warnResult.threshold} предупреждений диалог будет помечен на архивацию.</i>`);
         if (replyToMessageId) replyToId = replyToMessageId;
         break;
       }
@@ -499,12 +549,28 @@ export async function executeDotCommand(
         const seconds = parseInt(parsed.arguments[0] || '10', 10);
         const safeSec = isNaN(seconds) || seconds < 1 ? 10 : Math.min(seconds, 3600);
         responseText = `⏱ <b>Таймер запущен на ${safeSec} сек.</b>\nSerkoGram пришлёт уведомление в этот чат по истечении времени.`;
+        if (safeSec <= 60) {
+          setTimeout(async () => {
+            try {
+              await bot.api.sendMessage(
+                telegramChatId.toString(),
+                `⏰ <b>Время вышло!</b> Таймер на ${safeSec} сек. завершён.`,
+                {
+                  parse_mode: 'HTML',
+                  business_connection_id: businessConnectionId,
+                }
+              );
+            } catch (e: any) {
+              console.warn('[DotCommand] Timer notification error:', e?.message);
+            }
+          }, safeSec * 1000);
+        }
         break;
       }
 
       case 'typing': {
         try {
-          await bot.api.sendChatAction(Number(telegramChatId), 'typing', {
+          await bot.api.sendChatAction(telegramChatId.toString(), 'typing', {
             business_connection_id: businessConnectionId,
           });
         } catch (e: any) {
@@ -754,6 +820,63 @@ export async function executeDotCommand(
         break;
       }
 
+      case 'p': {
+        responseText =
+          `⚡ <b>SERKOGRAM CHAT AUTOMATION</b>\n\n` +
+          `<pre>` +
+          `███████╗███████╗██████╗ ██╗  ██╗ ██████╗ \n` +
+          `██╔════╝██╔════╝██╔══██╗██║ ██╔╝██╔═══██╗\n` +
+          `███████╗█████╗  ██████╔╝█████╔╝ ██║   ██║\n` +
+          `╚════██║██╔══╝  ██╔══██╗██╔═██╗ ██║   ██║\n` +
+          `███████║███████╗██║  ██║██║  ██╗╚██████╔╝\n` +
+          `╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ \n` +
+          `[████████████████████] 100% ONLINE</pre>`;
+        break;
+      }
+
+      case 'love': {
+        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
+        responseText =
+          `❤️🧡💛💚💙💜\n` +
+          `💕 <b>${escapeHtml(targetText || 'Я тебя люблю!')}</b> 💕\n` +
+          `💜💙💚💛🧡❤️`;
+        if (replyToMessageId) replyToId = replyToMessageId;
+        break;
+      }
+
+      case 'love2': {
+        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
+        responseText =
+          `🤍🤎💜💙💚💛🧡❤️\n` +
+          `   ✨ <b>${escapeHtml(targetText || 'Люблю тебя')}</b> ✨\n` +
+          `❤️🧡💛💚💙💜🤎🤍`;
+        if (replyToMessageId) replyToId = replyToMessageId;
+        break;
+      }
+
+      case '-7': {
+        responseText =
+          `🩸 <b>1000 - 7</b>\n\n` +
+          `<code>1000 - 7 = 993\n` +
+          `993 - 7 = 986\n` +
+          `986 - 7 = 979\n` +
+          `979 - 7 = 972\n` +
+          `...\n` +
+          `7 - 7 = 0</code>\n\n` +
+          `<i>«Я тот, кто пожирает гулей...»</i> 👁️`;
+        break;
+      }
+
+      case 'tyuring': {
+        responseText =
+          `🧠 <b>Тест Тьюринга</b>\n\n` +
+          `• <b>Субъект:</b> SerkoGram Chat Automation\n` +
+          `• <b>Когнитивный статус:</b> 100% Осознанность\n` +
+          `• <b>Вердикт:</b> <i>Тест пройден. Искусственный интеллект неотличим от собеседника.</i> 🤖✨`;
+        break;
+      }
+
+      case 'trol':
       case 'troll':
       case 'a_troll': {
         if (!checkCooldown(userId, 'troll', 10)) {
@@ -761,6 +884,12 @@ export async function executeDotCommand(
         } else {
           responseText = `🙃 <b>SerkoGram</b>: Всё под контролем, переписка надёжно архивируется.`;
         }
+        break;
+      }
+
+      case 'dox':
+      case 'deanon': {
+        responseText = `🚫 <b>Команда недоступна</b>\n\nСбор персональных данных строго запрещён политикой безопасности SerkoGram и Telegram ToS.`;
         break;
       }
 
@@ -773,7 +902,7 @@ export async function executeDotCommand(
     let sentMessageId: number | undefined = undefined;
     if (responseText) {
       try {
-        const sent = await bot.api.sendMessage(Number(telegramChatId), responseText, {
+        const sent = await bot.api.sendMessage(telegramChatId.toString(), responseText, {
           parse_mode: 'HTML',
           business_connection_id: businessConnectionId,
           reply_parameters: replyToId ? { message_id: replyToId } : undefined,

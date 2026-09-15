@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // SerkoGram — Ephemeral / View-Once Media Service
 // ============================================================
 
@@ -48,9 +48,10 @@ export function detectEphemeralAttributes(tgMsg: any): {
 export async function saveEphemeralMedia(
   chatId: string,
   replyToMessageId: number,
-  userId: string
+  userId: string,
+  rawReplyToObj?: any
 ): Promise<EphemeralSaveResult> {
-  const message = await prisma.message.findUnique({
+  let message = await prisma.message.findUnique({
     where: {
       chatId_telegramMessageId: {
         chatId,
@@ -67,6 +68,94 @@ export async function saveEphemeralMedia(
     },
   });
 
+  // If message or media is not in DB yet, but raw reply_to_message object contains media
+  if ((!message || message.media.length === 0) && rawReplyToObj) {
+    let fileId: string | undefined;
+    let fileUniqueId: string | undefined;
+    let mediaType: any = 'PHOTO';
+    let fileName: string | undefined;
+    let mimeType: string | undefined;
+    let fileSize: number | undefined;
+
+    if (rawReplyToObj.photo && rawReplyToObj.photo.length > 0) {
+      const p = rawReplyToObj.photo[rawReplyToObj.photo.length - 1];
+      fileId = p.file_id;
+      fileUniqueId = p.file_unique_id;
+      fileSize = p.file_size;
+      mediaType = 'PHOTO';
+      mimeType = 'image/jpeg';
+    } else if (rawReplyToObj.video) {
+      fileId = rawReplyToObj.video.file_id;
+      fileUniqueId = rawReplyToObj.video.file_unique_id;
+      fileSize = rawReplyToObj.video.file_size;
+      mediaType = 'VIDEO';
+      mimeType = rawReplyToObj.video.mime_type || 'video/mp4';
+      fileName = rawReplyToObj.video.file_name;
+    } else if (rawReplyToObj.voice) {
+      fileId = rawReplyToObj.voice.file_id;
+      fileUniqueId = rawReplyToObj.voice.file_unique_id;
+      fileSize = rawReplyToObj.voice.file_size;
+      mediaType = 'VOICE';
+      mimeType = rawReplyToObj.voice.mime_type || 'audio/ogg';
+    } else if (rawReplyToObj.video_note) {
+      fileId = rawReplyToObj.video_note.file_id;
+      fileUniqueId = rawReplyToObj.video_note.file_unique_id;
+      fileSize = rawReplyToObj.video_note.file_size;
+      mediaType = 'VIDEO_NOTE';
+      mimeType = 'video/mp4';
+    } else if (rawReplyToObj.document) {
+      fileId = rawReplyToObj.document.file_id;
+      fileUniqueId = rawReplyToObj.document.file_unique_id;
+      fileSize = rawReplyToObj.document.file_size;
+      mediaType = 'DOCUMENT';
+      mimeType = rawReplyToObj.document.mime_type || 'application/octet-stream';
+      fileName = rawReplyToObj.document.file_name;
+    }
+
+    if (fileId && fileUniqueId) {
+      try {
+        const targetMsg = message || await prisma.message.upsert({
+          where: {
+            chatId_telegramMessageId: {
+              chatId,
+              telegramMessageId: replyToMessageId,
+            },
+          },
+          create: {
+            chatId,
+            telegramMessageId: replyToMessageId,
+            isOutgoing: false,
+            messageType: mediaType || 'PHOTO',
+            text: rawReplyToObj.caption || rawReplyToObj.text,
+            telegramDate: new Date((rawReplyToObj.date || Math.floor(Date.now() / 1000)) * 1000),
+          },
+          update: {},
+        });
+
+        await downloadAndStoreMedia(
+          targetMsg.id,
+          fileId,
+          fileUniqueId,
+          mediaType,
+          { fileName, mimeType, fileSize }
+        );
+
+        const storedMedia = await prisma.messageMedia.findFirst({
+          where: { messageId: targetMsg.id, fileUniqueId },
+        });
+
+        return {
+          success: true,
+          archiveStatus: 'ARCHIVED',
+          message: `Медиафайл успешно зафиксирован и сохранён в защищённом архиве SerkoGram!`,
+          media: storedMedia,
+        };
+      } catch (dlErr: any) {
+        console.warn('[EphemeralService] Direct download note:', dlErr?.message);
+      }
+    }
+  }
+
   if (!message) {
     return {
       success: false,
@@ -76,7 +165,7 @@ export async function saveEphemeralMedia(
   }
 
   // Verify ownership
-  if (message.chat.connection.userId !== userId) {
+  if (message.chat?.connection && message.chat.connection.userId !== userId) {
     return {
       success: false,
       archiveStatus: 'UNAVAILABLE',

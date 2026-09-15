@@ -202,71 +202,98 @@ export class ConnectedBusinessBotAdapter implements ConnectionAdapter {
 }
 
 // ============================================================
-// Mode D Adapter (Account-Level MTProto Userbot — Unsupported on Serverless)
+// Real Chat Automation Adapter (Per-Chat Automation & Rules)
 // ============================================================
 
-export class AccountAutomationAdapter implements ConnectionAdapter {
-  async getConnection(_userId: string): Promise<BusinessConnection | null> {
-    return null;
+export interface ChatAutomationSettings {
+  autoTranslateLang?: string | null;
+  autoTypingEnabled?: boolean;
+  warningThreshold?: number;
+  moderationEnabled?: boolean;
+}
+
+export class ChatAutomationAdapter implements ConnectionAdapter {
+  private base = new ConnectedBusinessBotAdapter();
+  private chatSettings = new Map<string, ChatAutomationSettings>();
+  private warnings = new Map<string, { count: number; lastWarningAt: Date; reason?: string }>();
+
+  async getConnection(userId: string): Promise<BusinessConnection | null> {
+    return this.base.getConnection(userId);
   }
 
-  async getAccount(_userId: string) {
-    return null;
+  async getChats(connectionId: string): Promise<Chat[]> {
+    return this.base.getChats(connectionId);
   }
 
-  async getChats(_connectionId: string): Promise<Chat[]> {
-    return [];
-  }
-
-  async getPermissions(_connectionId: string): Promise<ConnectionPermission[]> {
+  async getPermissions(connectionId: string): Promise<ConnectionPermission[]> {
+    const perms = await this.base.getPermissions(connectionId);
     return [
+      ...perms,
       {
-        key: 'mtproto_session',
-        label: 'MTProto Userbot (Недоступен на Serverless: требуется выделенный worker daemon)',
-        granted: false,
-      },
-      {
-        key: 'read_dialogs',
-        label: 'Чтение личных диалогов (Работает через Telegram Business)',
-        granted: false,
+        key: 'chat_automation',
+        label: 'Автоматизация в управляемых чатах (Chat Automation)',
+        granted: perms.some((p) => p.key === 'can_reply' && p.granted),
       },
       {
         key: 'dot_commands',
-        label: 'Точечные команды (.) в чатах (Работают через Telegram Business Bot)',
-        granted: true,
-      },
-      {
-        key: 'ephemeral_save',
-        label: 'Сохранение одноразовых фото/видео (Работает через Telegram Business Bot)',
-        granted: true,
+        label: 'Точечные команды (.) в диалогах',
+        granted: perms.some((p) => p.key === 'can_reply' && p.granted),
       },
     ];
   }
 
-  async getStatus(_connectionId: string): Promise<ConnectionStatus> {
-    return 'DISCONNECTED';
+  async getStatus(connectionId: string): Promise<ConnectionStatus> {
+    return this.base.getStatus(connectionId);
   }
 
-  async disconnect(_connectionId: string): Promise<void> {
-    // No-op for unsupported MTProto
+  async disconnect(connectionId: string): Promise<void> {
+    return this.base.disconnect(connectionId);
   }
 
   async processMessage(chatId: string, messageData: any): Promise<any> {
-    return saveMessage({ ...messageData, chatId });
+    return this.base.processMessage(chatId, messageData);
   }
 
   async processEdit(chatId: string, editData: any): Promise<void> {
-    await processEditedMessage({ ...editData, chatId });
+    return this.base.processEdit(chatId, editData);
   }
 
   async processDelete(chatId: string, messageIds: number[]): Promise<void> {
-    await processDeletedMessages(chatId, messageIds, new Date());
+    return this.base.processDelete(chatId, messageIds);
+  }
+
+  getChatSettings(chatId: string): ChatAutomationSettings {
+    return this.chatSettings.get(chatId) || {};
+  }
+
+  setChatSettings(chatId: string, settings: Partial<ChatAutomationSettings>): void {
+    const current = this.getChatSettings(chatId);
+    this.chatSettings.set(chatId, { ...current, ...settings });
+  }
+
+  addWarning(chatId: string, targetUserId: string, reason?: string): { count: number; threshold: number; exceeded: boolean } {
+    const key = `${chatId}:${targetUserId}`;
+    const prev = this.warnings.get(key)?.count || 0;
+    const count = prev + 1;
+    this.warnings.set(key, { count, lastWarningAt: new Date(), reason });
+    const threshold = this.getChatSettings(chatId).warningThreshold || 3;
+    return { count, threshold, exceeded: count >= threshold };
+  }
+
+  getWarnings(chatId: string, targetUserId: string): number {
+    return this.warnings.get(`${chatId}:${targetUserId}`)?.count || 0;
+  }
+
+  resetWarnings(chatId: string, targetUserId: string): void {
+    this.warnings.delete(`${chatId}:${targetUserId}`);
   }
 }
 
 // Backward-compatible alias
 export const BusinessAdapter = ConnectedBusinessBotAdapter;
-export const ChatAutomationAdapter = ConnectedBusinessBotAdapter;
+
+// Export singleton instance for webhook automation
+export const chatAutomation = new ChatAutomationAdapter();
 
 // ============================================================
 // Factory
@@ -275,10 +302,9 @@ export const ChatAutomationAdapter = ConnectedBusinessBotAdapter;
 export function getAdapter(type: 'BUSINESS' | 'CHAT_AUTOMATION' | 'ACCOUNT'): ConnectionAdapter {
   switch (type) {
     case 'BUSINESS':
-    case 'CHAT_AUTOMATION':
       return new ConnectedBusinessBotAdapter();
-    case 'ACCOUNT':
-      return new AccountAutomationAdapter();
+    case 'CHAT_AUTOMATION':
+      return chatAutomation;
     default:
       return new ConnectedBusinessBotAdapter();
   }

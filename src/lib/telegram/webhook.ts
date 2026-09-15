@@ -10,7 +10,7 @@ import {
   processEditedMessage,
   processDeletedMessages,
 } from '@/lib/services/message-service';
-import { getRealTelegramBusinessConnection } from '@/lib/services/connection-service';
+import { getRealTelegramBusinessConnection, chatAutomation } from '@/lib/services/connection-service';
 import { downloadAndStoreMedia } from '@/lib/services/media-service';
 import { logAudit } from '@/lib/services/audit-service';
 import { parseBotCommand } from './parser';
@@ -223,7 +223,6 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
   const settings = await prisma.userSettings.findUnique({
     where: { userId: connection.userId },
   });
-  if (settings && !settings.saveMessages) return;
 
   // Find or create chat
   const chat = await prisma.chat.upsert({
@@ -284,35 +283,38 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
     (ownerTelegramId && msg.from ? BigInt(msg.from.id) === ownerTelegramId : false) ||
     (msg.chat.type === 'private' && msg.from ? msg.from.id !== msg.chat.id : false);
 
-  // Save message
-  const saved = await saveMessage({
-    chatId: chat.id,
-    telegramMessageId: msg.message_id,
-    businessConnectionId: msg.business_connection_id,
-    senderTelegramId: msg.from ? BigInt(msg.from.id) : undefined,
-    senderName: msg.from
-      ? [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' ')
-      : undefined,
-    senderUsername: msg.from?.username,
-    isOutgoing,
-    messageType,
-    text: msg.text,
-    caption: msg.caption,
-    replyToMessageId: msg.reply_to_message?.message_id,
-    telegramDate: new Date(msg.date * 1000),
-  });
+  // Save message to archive if user settings allow
+  let saved: any = null;
+  if (!settings || settings.saveMessages) {
+    saved = await saveMessage({
+      chatId: chat.id,
+      telegramMessageId: msg.message_id,
+      businessConnectionId: msg.business_connection_id,
+      senderTelegramId: msg.from ? BigInt(msg.from.id) : undefined,
+      senderName: msg.from
+        ? [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' ')
+        : undefined,
+      senderUsername: msg.from?.username,
+      isOutgoing,
+      messageType,
+      text: msg.text,
+      caption: msg.caption,
+      replyToMessageId: msg.reply_to_message?.message_id,
+      telegramDate: new Date(msg.date * 1000),
+    });
 
-  // Process media asynchronously if user settings allow
-  if (!settings || settings.saveMedia) {
-    await processMediaFromMessage(msg, saved.id);
+    // Process media asynchronously if user settings allow
+    if (saved && (!settings || settings.saveMedia)) {
+      await processMediaFromMessage(msg, saved.id);
+    }
   }
 
-  // Handle dot commands in business chat (e.g. .help, .info, .save, .coin, .search, etc.)
-  if (msg.text && msg.text.trim().startsWith('.')) {
+  // Handle dot and slash commands in business chat (e.g. .help, /p, .info, .save, .coin, .search, etc.)
+  if (msg.text && (msg.text.trim().startsWith('.') || msg.text.trim().startsWith('/'))) {
     try {
       const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'SerkoGram_bot';
       const parsedDot = parseAnyCommand(msg.text, {
-        allowedPrefixes: ['.'],
+        allowedPrefixes: ['.', '/'],
         currentBotUsername: botUsername,
         chatId: chat.id,
         senderId: msg.from?.id,
@@ -335,6 +337,26 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
       }
     } catch (cmdErr) {
       console.error('[Webhook] Error executing dot command:', cmdErr);
+    }
+  } else if (!isOutgoing && msg.text) {
+    // Auto-translation for incoming messages in managed chat if enabled
+    const autoLang = chatAutomation.getChatSettings(chat.id).autoTranslateLang;
+    if (autoLang && autoLang !== 'off') {
+      try {
+        const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(msg.text)}&langpair=auto|${autoLang}`);
+        const data = await res.json();
+        const translated = data?.responseData?.translatedText;
+        if (translated && translated.trim().toLowerCase() !== msg.text.trim().toLowerCase()) {
+          const bot = getBot();
+          await bot.api.sendMessage(msg.chat.id.toString(), `🌐 <b>Перевод:</b> <i>${translated}</i>`, {
+            parse_mode: 'HTML',
+            business_connection_id: msg.business_connection_id,
+            reply_parameters: { message_id: msg.message_id },
+          });
+        }
+      } catch (trErr) {
+        console.warn('[ChatAutomation] Auto-translate note:', trErr);
+      }
     }
   }
 }
