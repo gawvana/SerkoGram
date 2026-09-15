@@ -1,53 +1,103 @@
 # PROGRESS CHECKPOINT — SerkoGram Master Production Upgrade
 
-**Timestamp**: 2026-09-15 11:32 (UTC+5)  
-**Branch**: `main` (`84b096c`)  
-**Deployment**: `https://serkogram.vercel.app` (`dpl_CQT7op9y4Cypakh1zqTv25dTvoPg`)  
-**Bot Username**: `@SerkoGram_bot` (ID: 8904714820)  
-**Status**: 🟢 ACTIVE / PRODUCTION READY / 107 TESTS PASSING / 0 PENDING UPDATES  
+**Timestamp**: 2026-09-15 12:46 (UTC+5)  
+**Branch**: `main` (`bfa6464`)  
+**Deployment**: `https://serkogram.vercel.app` (`dpl_BDSXVL2T3BgomfhRnnxWnXk6rKLS`)  
+**Bot Username**: `@SerkoGram_bot` (ID: 8904714820, `can_connect_to_business: true`)  
+**Status**: 🟡 **REAL E2E BLOCKED** (Production live, awaiting user test from real Telegram client in managed chat)  
+**Test Suite**: 18 files, 126 tests — **100% PASS**  
+**TypeScript**: `tsc --noEmit` — **0 errors**  
+**Production Build**: Next.js 15.5.25 — **14 static pages, 28 API routes compiled**  
+**Webhook Queue**: `pending_update_count: 0`  
 
 ---
 
-## 1. Что уже сделано
+## 1. Что сделано (DONE)
 
-### A. Telegram Bot, Business Mode & Real Chat Automation
-- **Connected Business Bot Flow (Bot API 7.2+)**:
-  - Точечные команды (`.help`, `.coin`, `.p`, `.love`, `.-7`, `.tr`, `.save`, `.archive`, `.warn` и т.д.) работают прямо в **обычных диалогах** пользователя с собеседниками.
-  - Ответы отправляются напрямую в тот же чат через `bot.api.sendMessage(chat_id, text, { business_connection_id })`.
-  - Устранена блокировка выполнения команд при отключённой архивации: команды и автоматизация выполняются всегда.
-  - Идентификация исходящих сообщений через `is_from_offline: true`, совпадение `from.id` с владельцем и тип приватного чата.
-- **Двусторонний перевод и автоперевод (`.tr`, `.перевод`)**:
-  - Интеграция с сервисом MyMemory для живого перевода текста (`.tr <lang> <текст>` или в reply).
-  - Настройка автоматического перевода входящих сообщений диалога на лету (`.перевод <lang>`).
-- **Своевременный захват исчезающих медиа (`.save`)**:
-  - `saveEphemeralMedia` напрямую извлекает `file_id` из `msg.reply_to_message` (фото, видео, голосовые, видеозаметки) и отправляет в хранилище без задержки.
-- **Анимации и развлечения**:
-  - Реализованы анимации `.p` (пиксельный баннер), `.love`, `.love2` (радужные сердца), `.-7` (обратный отсчёт Канеки 1000 - 7), `.tyuring` (тест Тьюринга), `.trol`.
-- **Строгая безопасность данных**:
-  - Попытки вызова деанона (`.dox`, `.deanon`, `.osint`) блокируются с немедленным возвратом отказа и предупреждения о политике конфиденциальности.
-- **Синхронизация Webhook с Telegram**:
-  - Webhook URL `https://serkogram.vercel.app/api/telegram/webhook` полностью синхронизирован с `TELEGRAM_WEBHOOK_SECRET`.
-  - Очередь обновлений Telegram очищена (`pending_update_count: 0`).
+### A. Миграция состояния в PostgreSQL (Zero Memory Leaks)
+- В `prisma/schema.prisma` добавлены модели:
+  - `ChatAutomationSettings`: постоянное хранение `muteEnabled`, `muteUntil`, `panicEnabled`, `autoTranslateLang`, `warningThreshold`, `autoTypingEnabled`, `moderationEnabled`.
+  - `ChatWarning`: постоянный учёт предупреждений (`chatId`, `targetTelegramId`, `count`, `reason`).
+- Класс `ChatAutomationAdapter` в `src/lib/services/connection-service.ts` полностью переведён на асинхронные операции Prisma (`getChatSettings`, `setChatSettings`, `addWarning`, `getWarnings`, `resetWarnings`).
+- Реализован отказоустойчивый fallback-кэш для защиты от сбоев БД.
 
-### B. Интерактивные игры и текстовые эффекты
-- **Игры**: Монетка (`.coin`), Камень-Ножницы-Бумага (`.rps`), Крестики-нолики (`.ttt`).
-- **Текстовые эффекты**: `.flip`, `.bubble`, `.nospace`, `.dumb`, `.leet`, `.zalgo`, `.spoiler`, `.heart`, `.plove`.
+### B. Реальное исполнение команд .mute и .panic
+- **`.mute` / `.unmute`**:
+  - Активирует режим подавления входящих сообщений с настраиваемым временем (`.mute 30` = 30 мин) или снятием (`.mute off` / `.unmute`).
+  - Состояние сохраняется в PostgreSQL.
+  - В `src/lib/telegram/webhook.ts` добавлена реальная проверка в `handleBusinessMessage`: входящие сообщения собеседника автоматически удаляются через `bot.api.deleteMessage(chat_id, message_id)`.
+  - Сообщения владельца чата **НИКОГДА не удаляются** и продолжают выполняться.
+- **`.panic` / `.unpanic`**:
+  - Экстренный режим защиты диалога: все входящие сообщения собеседника немедленно удаляются, фиксация событий отправляется приватно владельцу в Direct DM.
+  - Снятие режима: `.panic off` или `.unpanic`.
 
-### C. Тестирование и верификация
-- **Vitest**: 16 тест-файлов, 107 тестов — 100% PASS.
-- **TypeScript**: `tsc --noEmit` — 0 ошибок.
-- **Build**: Next.js 15.5.25 — 13 статических/динамических маршрутов успешно скомпилированы.
-- **Production**: Проверены маршруты `/`, `/commands`, `/archive`, `/connect`, `/faq`, `/instructions`, `/settings`, `/api/health`, `/api/admin/telegram/diagnostics`.
+### C. Честный статус неподдерживаемых функций (No Fake / Honest Registry)
+- Заглушки, имитировавшие успешную работу без реальных провайдеров, переведены на честные информационные ответы с указанием реальных причин:
+  - `.stt`: отключено в каталоге (`disabledReason: 'Требуется подключение Whisper / Google STT API'`), честный ответ пользователю.
+  - `.гс` / `.vnote` / `.vreverse`: отключено в каталоге (`disabledReason: 'Требуется серверная обработка FFmpeg'`).
+  - `.clone`: отключено в каталоге (`disabledReason: 'Не поддерживается Telegram Bot API'`).
+  - `.online` / `.autotyping` / `.autovoice`: отключено в каталоге (`disabledReason: 'Функция требует прямого MTProto-подключения клиента'`).
+- Реализована команда `.dice` / `.дайс` с отправкой нативного анимированного кубика Telegram через `bot.api.sendDice`.
+- Команда `.timer` получила ограничение 55 секунд с честным пояснением серверлесс-архитектуры Vercel.
+
+### D. Строгие права BusinessBotRights (No Conflation)
+- Устранено ложное допущение `can_reply == delete permissions`.
+- В `getBusinessRights` и `getPermissions` теперь строго проверяется `can_delete_all_messages` и `can_delete_outgoing_messages` из официального объекта `BusinessBotRights` Telegram Bot API 7.2+.
+
+### E. Безопасность и Webhook
+- `verifyWebhookSecret` усилен `crypto.timingSafeEqual` с проверкой длины буферов для защиты от timing-атак.
+- Валидация `validateInitData` усилена защитой от исключений `RangeError` при несовпадении длины хешей.
+- Команда `/save` в личных сообщениях с ботом теперь вызывает `saveEphemeralMedia` вместо статического текста.
 
 ---
 
-## 2. Что сейчас выполняется
-- Все задачи текущей фазы завершены. Проект протестирован и находится на продакшене.
+## 2. Статус реализации команд (Catalog Audit)
+
+| Команда | Статус | Реальное поведение |
+| :--- | :--- | :--- |
+| `.help` / `.info` | **REAL** | Справка и меню возможностей в текущий диалог |
+| `.coin` / `.dice` | **REAL** | Случайный бросок монетки или нативный анимированный `sendDice` |
+| `.rps` / `.ttt` | **REAL** | Интерактивные мини-игры (Камень-Ножницы-Бумага, Крестики-нолики) |
+| `.tr` / `.перевод` | **REAL** | Живой двусторонний перевод текста через MyMemory API |
+| `.save` | **REAL (PRIVATE)** | Бесшумное извлечение и сохранение медиа, уведомление только владельцу в DM |
+| `.mute` / `.unmute` | **REAL** | Запись в БД, авто-удаление входящих сообщений собеседника в Webhook |
+| `.panic` / `.unpanic`| **REAL** | Экстренное удаление входящих сообщений в Webhook, приватное уведомление |
+| `.warn` | **REAL** | Учёт нарушений собеседника в PostgreSQL с контролем лимита |
+| `.flip` / `.bubble` / `.leet` / etc. | **REAL** | Текстовые трансформации текста на лету |
+| `.dem` / `.art` / `.wanted` / `.pet` | **REAL** | Форматированные баннеры, ASCII-арт, карточки |
+| `.stt` | **UNAVAILABLE** | Честное уведомление об отсутствии Whisper / Google STT API |
+| `.vnote` / `.vreverse` | **UNAVAILABLE** | Честное уведомление о необходимости серверного FFmpeg |
+| `.clone` | **UNAVAILABLE** | Честное уведомление об ограничениях Bot API |
+| `.online` / `.autotyping` / `.autovoice` | **UNAVAILABLE** | Честное уведомление о необходимости MTProto User API |
 
 ---
 
-## 3. Последний успешный тест / Build
-- **Vitest**: 16/16 suites, 107/107 tests PASSING.
-- **TypeScript**: `tsc --noEmit` — 0 errors.
-- **Next.js Build**: Code 0.
-- **Deployment**: `dpl_CQT7op9y4Cypakh1zqTv25dTvoPg` (Status: READY, Aliased to `https://serkogram.vercel.app`).
+## 3. Текущее состояние и проверка
+
+- **Тесты**: 18 файлов, 126 тестов (включая `chat-automation-hardened.test.ts`) — **126 PASSED**.
+- **Типы**: `tsc --noEmit` — **0 ошибок**.
+- **Линтер**: `next lint` — **0 ошибок и предупреждений**.
+- **Сборка**: Next.js 15.5.25 — **Успешно**.
+- **Деплой**: Vercel Production (`https://serkogram.vercel.app`, ID: `dpl_BDSXVL2T3BgomfhRnnxWnXk6rKLS`).
+- **Живые маршруты**:
+  - `GET https://serkogram.vercel.app/api/health` → `200 OK`
+  - `GET https://serkogram.vercel.app/api/commands` → `200 OK`
+  - `GET https://serkogram.vercel.app/commands` → `200 OK`
+  - `GET https://serkogram.vercel.app/notifications` → `200 OK`
+- **Telegram Webhook**: `pending_update_count: 0`, URL синхронизирован.
+
+---
+
+## 4. Следующие шаги для пользователя
+
+1. Открыть Telegram на аккаунте с Telegram Business.
+2. В Настройки → Telegram Business → Чат-боты убедиться, что `@SerkoGram_bot` подключён и включён для целевого диалога.
+3. Открыть **обычный личный диалог с другим пользователем** и отправить:
+   - `.help` — проверить получение справки прямо в диалоге;
+   - `.coin` или `.dice` — проверить бросок монетки или кубика;
+   - `.mute 5` — проверить включение мута на 5 минут;
+   - С аккаунта собеседника отправить сообщение — проверить его мгновенное удаление ботом;
+   - Отправить `.mute off` или `.unmute` — проверить снятие ограничений;
+   - Отправить `.panic` — проверить активацию экстренной защиты;
+   - Отправить `.panic off` — вернуть нормальный режим.
+
