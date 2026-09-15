@@ -1,63 +1,53 @@
 # PROGRESS CHECKPOINT — SerkoGram Master Production Upgrade
 
-**Timestamp**: 2026-09-15 10:31 (UTC+5)  
-**Branch**: `main`  
-**Deployment**: `https://serkogram.vercel.app`  
+**Timestamp**: 2026-09-15 11:32 (UTC+5)  
+**Branch**: `main` (`84b096c`)  
+**Deployment**: `https://serkogram.vercel.app` (`dpl_CQT7op9y4Cypakh1zqTv25dTvoPg`)  
 **Bot Username**: `@SerkoGram_bot` (ID: 8904714820)  
-**Status**: ACTIVE / ALL GATES GREEN / 93 TESTS PASSING  
+**Status**: 🟢 ACTIVE / PRODUCTION READY / 107 TESTS PASSING / 0 PENDING UPDATES  
 
 ---
 
 ## 1. Что уже сделано
 
-### A. Telegram Bot, Business Mode & Webhook Reliability
-- **Zero-Crash Resilient Database Layer (`src/lib/db.ts`)**:
-  - Implemented an in-memory resilient fallback store for Prisma that prevents `PrismaClientInitializationError` when `DATABASE_URL` is unconfigured on serverless hosting (Vercel).
-  - Webhooks and bot operations process cleanly without false 500 error loops.
-- **Webhook Pipeline Hardening (`src/app/api/telegram/webhook/route.ts`)**:
-  - Validates `x-telegram-bot-api-secret-token` header.
-  - Returns HTTP 200 to Telegram so delivered updates are acknowledged and don't stall the webhook queue.
-- **100% Reliable Outgoing Message Detection**:
-  - Uses `msg.is_from_offline === true`, checks if sender is not the chat partner in private chats, and compares `msg.from.id` to connection owner's `telegramId`.
-- **Command Prefix Support**:
-  - Direct bot messages in `@SerkoGram_bot` now support both dot (`.`) and slash (`/`) commands (`.help`, `.coin`, `.rps`, `.ttt`, `.info`, etc.).
-  - Friendly guided response for non-command private messages.
+### A. Telegram Bot, Business Mode & Real Chat Automation
+- **Connected Business Bot Flow (Bot API 7.2+)**:
+  - Точечные команды (`.help`, `.coin`, `.p`, `.love`, `.-7`, `.tr`, `.save`, `.archive`, `.warn` и т.д.) работают прямо в **обычных диалогах** пользователя с собеседниками.
+  - Ответы отправляются напрямую в тот же чат через `bot.api.sendMessage(chat_id, text, { business_connection_id })`.
+  - Устранена блокировка выполнения команд при отключённой архивации: команды и автоматизация выполняются всегда.
+  - Идентификация исходящих сообщений через `is_from_offline: true`, совпадение `from.id` с владельцем и тип приватного чата.
+- **Двусторонний перевод и автоперевод (`.tr`, `.перевод`)**:
+  - Интеграция с сервисом MyMemory для живого перевода текста (`.tr <lang> <текст>` или в reply).
+  - Настройка автоматического перевода входящих сообщений диалога на лету (`.перевод <lang>`).
+- **Своевременный захват исчезающих медиа (`.save`)**:
+  - `saveEphemeralMedia` напрямую извлекает `file_id` из `msg.reply_to_message` (фото, видео, голосовые, видеозаметки) и отправляет в хранилище без задержки.
+- **Анимации и развлечения**:
+  - Реализованы анимации `.p` (пиксельный баннер), `.love`, `.love2` (радужные сердца), `.-7` (обратный отсчёт Канеки 1000 - 7), `.tyuring` (тест Тьюринга), `.trol`.
+- **Строгая безопасность данных**:
+  - Попытки вызова деанона (`.dox`, `.deanon`, `.osint`) блокируются с немедленным возвратом отказа и предупреждения о политике конфиденциальности.
+- **Синхронизация Webhook с Telegram**:
+  - Webhook URL `https://serkogram.vercel.app/api/telegram/webhook` полностью синхронизирован с `TELEGRAM_WEBHOOK_SECRET`.
+  - Очередь обновлений Telegram очищена (`pending_update_count: 0`).
 
-### B. Interactive Games Engine (`src/lib/telegram/games.ts`)
-- **Tic-Tac-Toe (Крестики-нолики)**:
-  - 3x3 interactive board state machine (`ttt:play:<board>:<cell>`).
-  - Intelligent bot moves with win-check, block-check, and center control.
-  - In-place message edits via `editMessageText` and restart button (`ttt:reset`).
-- **Rock-Paper-Scissors (Камень, ножницы, бумага)**:
-  - Interactive callbacks (`rps:play:камень`, `rps:play:ножницы`, `rps:play:бумага`).
-  - Outcome calculation and in-place message update with replay button (`rps:reset`).
+### B. Интерактивные игры и текстовые эффекты
+- **Игры**: Монетка (`.coin`), Камень-Ножницы-Бумага (`.rps`), Крестики-нолики (`.ttt`).
+- **Текстовые эффекты**: `.flip`, `.bubble`, `.nospace`, `.dumb`, `.leet`, `.zalgo`, `.spoiler`, `.heart`, `.plove`.
 
-### C. Honest Capability Architecture
-- **Mode A (Bot API)**: Supported via `@SerkoGram_bot`.
-- **Mode B (Telegram Business Bot)**: Supported via official `business_connection_id`.
-- **Mode C (Chat Automation)**: Handled via official Business Bot connection.
-- **Mode D (Account-level MTProto Userbot)**: Explicitly and honestly marked in UI (`/connect`) and adapter as unsupported on serverless infrastructure without a dedicated stateful worker daemon.
-
-### D. Testing & Quality Assurance
-- **Vitest Suite**: 15 test files, 93 tests passing (100% pass rate).
-- **TypeScript**: `tsc --noEmit` — 0 errors.
-- **Next.js Build**: `npm run build` succeeds with code 0 (13 static/dynamic routes compiled).
+### C. Тестирование и верификация
+- **Vitest**: 16 тест-файлов, 107 тестов — 100% PASS.
+- **TypeScript**: `tsc --noEmit` — 0 ошибок.
+- **Build**: Next.js 15.5.25 — 13 статических/динамических маршрутов успешно скомпилированы.
+- **Production**: Проверены маршруты `/`, `/commands`, `/archive`, `/connect`, `/faq`, `/instructions`, `/settings`, `/api/health`, `/api/admin/telegram/diagnostics`.
 
 ---
 
 ## 2. Что сейчас выполняется
-- Подготовка к `git commit`, `git push` и `vercel --prod` деплою.
+- Все задачи текущей фазы завершены. Проект протестирован и находится на продакшене.
 
 ---
 
-## 3. Что осталось
-1. Закоммитить и запушить изменения в `origin main`.
-2. Запустить `vercel --prod --yes` для деплоя на продакшн.
-3. Проверить очистку очереди Telegram (`getWebhookInfo`).
-
----
-
-## 4. Последний успешный тест / Build
-- **Vitest**: 15/15 suites, 93/93 tests PASSING.
+## 3. Последний успешный тест / Build
+- **Vitest**: 16/16 suites, 107/107 tests PASSING.
 - **TypeScript**: `tsc --noEmit` — 0 errors.
-- **Build**: Next.js 15.5.25 optimized production build successful.
+- **Next.js Build**: Code 0.
+- **Deployment**: `dpl_CQT7op9y4Cypakh1zqTv25dTvoPg` (Status: READY, Aliased to `https://serkogram.vercel.app`).
