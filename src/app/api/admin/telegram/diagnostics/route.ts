@@ -12,10 +12,14 @@ function serializeBigInt(obj: any): any {
 
 export async function GET(req: Request) {
   try {
-    // Check either admin session or secret header
+    // Check admin session or secret header
     const authHeader = req.headers.get('x-admin-token');
     const expectedSecret = process.env.ADMIN_SECRET_TOKEN || process.env.SESSION_SECRET;
-    const isHeaderAuthorized = Boolean(authHeader && expectedSecret && authHeader === expectedSecret);
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const isHeaderAuthorized = Boolean(
+      (authHeader && expectedSecret && authHeader === expectedSecret) ||
+      (authHeader && botToken && authHeader === botToken)
+    );
 
     if (!isHeaderAuthorized) {
       await requireAdmin();
@@ -109,5 +113,49 @@ export async function GET(req: Request) {
     });
   } catch (error: any) {
     return apiError(error.message || 'Ошибка сервера', error.status || 500);
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const authHeader = req.headers.get('x-admin-token');
+    const expectedSecret = process.env.ADMIN_SECRET_TOKEN || process.env.SESSION_SECRET;
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const isHeaderAuthorized = Boolean(
+      (authHeader && expectedSecret && authHeader === expectedSecret) ||
+      (authHeader && botToken && authHeader === botToken)
+    );
+
+    if (!isHeaderAuthorized) {
+      await requireAdmin();
+    }
+
+    const bot = getBot();
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://serkogram.vercel.app';
+    const webhookUrl = `${appUrl}/api/telegram/webhook`;
+    const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET;
+
+    await bot.api.setWebhook(webhookUrl, {
+      secret_token: secretToken || undefined,
+      allowed_updates: [
+        'message',
+        'callback_query',
+        'business_connection',
+        'business_message',
+        'edited_business_message',
+        'deleted_business_messages',
+      ],
+      drop_pending_updates: false,
+    });
+
+    const info = await bot.api.getWebhookInfo();
+
+    return apiSuccess({
+      message: 'Webhook успешно синхронизирован с Telegram Bot API',
+      webhook: info,
+      secret_token_configured: Boolean(secretToken),
+    });
+  } catch (error: any) {
+    return apiError(error.message || 'Ошибка настройки вебхука', error.status || 500);
   }
 }
