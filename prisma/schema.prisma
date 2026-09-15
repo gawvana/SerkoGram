@@ -530,3 +530,22 @@ model ChatWarning {
 
   @@unique([chatId, targetTelegramId])
 }
+
+model ScheduledJob {
+  id                   String   @id @default(cuid())
+  type                 String   // "TIMER", "REMINDER"
+  chatId               String   @map("chat_id")
+  telegramChatId       BigInt   @map("telegram_chat_id")
+  businessConnectionId String?  @map("business_connection_id")
+  userId               String?  @map("user_id")
+  targetMessageId      Int?     @map("target_message_id")
+  payload              String?  // JSON stringified payload
+  executeAt            DateTime @map("execute_at")
+  status               String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED
+  attempts             Int      @default(0)
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@index([status, executeAt])
+  @@map("scheduled_jobs")
+}

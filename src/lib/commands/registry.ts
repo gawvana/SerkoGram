@@ -53,6 +53,7 @@ export const COMMAND_CATEGORIES: CommandCategoryInfo[] = [
 export interface UnifiedCommandDefinition {
   id: string;
   name: string;
+  aliases?: string[];
   prefix: CommandPrefix;
   title: string;
   description: string;
@@ -68,6 +69,7 @@ export interface UnifiedCommandDefinition {
   requiresMedia: boolean;
   requiredPermissions: string[];
   responseMode: ResponseMode;
+  featureStatus?: 'REAL' | 'LIMITED_BY_API' | 'DISABLED_POLICY';
   uiRoute?: string;
   telegramMenu: boolean;
   handlerIdentifier: string;
@@ -1401,66 +1403,6 @@ export const UNIFIED_COMMANDS: UnifiedCommandDefinition[] = [
     handlerIdentifier: 'handleAgro',
   },
   {
-    id: 'spoiler',
-    name: 'spoiler',
-    prefix: '.',
-    title: 'Текст под спойлер',
-    description: 'Обернуть текст в скрытый спойлер Telegram',
-    category: 'animations',
-    usage: '.spoiler <текст>',
-    example: '.spoiler Секретное сообщение',
-    enabled: true,
-    requiresReply: false,
-    requiresArguments: true,
-    requiresConnection: true,
-    requiresAI: false,
-    requiresMedia: false,
-    requiredPermissions: [],
-    responseMode: 'SAME_CHAT',
-    telegramMenu: false,
-    handlerIdentifier: 'handleSpoiler',
-  },
-  {
-    id: 'flip',
-    name: 'flip',
-    prefix: '.',
-    title: 'Перевёрнутый текст',
-    description: 'Перевернуть текст вверх ногами (uʍop ǝpısdn)',
-    category: 'animations',
-    usage: '.flip <текст>',
-    example: '.flip Привет мир',
-    enabled: true,
-    requiresReply: false,
-    requiresArguments: true,
-    requiresConnection: true,
-    requiresAI: false,
-    requiresMedia: false,
-    requiredPermissions: [],
-    responseMode: 'SAME_CHAT',
-    telegramMenu: false,
-    handlerIdentifier: 'handleFlip',
-  },
-  {
-    id: 'bubble',
-    name: 'bubble',
-    prefix: '.',
-    title: 'Текст в кружочках',
-    description: 'Трансформация букв в кружочки (ⓑⓤⓑⓑⓛⓔ)',
-    category: 'animations',
-    usage: '.bubble <текст>',
-    example: '.bubble SerkoGram',
-    enabled: true,
-    requiresReply: false,
-    requiresArguments: true,
-    requiresConnection: true,
-    requiresAI: false,
-    requiresMedia: false,
-    requiredPermissions: [],
-    responseMode: 'SAME_CHAT',
-    telegramMenu: false,
-    handlerIdentifier: 'handleBubble',
-  },
-  {
     id: 'nospace',
     name: 'nospace',
     prefix: '.',
@@ -1470,6 +1412,7 @@ export const UNIFIED_COMMANDS: UnifiedCommandDefinition[] = [
     usage: '.nospace <текст>',
     example: '.nospace Пишем слитно всё',
     enabled: true,
+    featureStatus: 'REAL',
     requiresReply: false,
     requiresArguments: true,
     requiresConnection: true,
@@ -1481,75 +1424,163 @@ export const UNIFIED_COMMANDS: UnifiedCommandDefinition[] = [
     handlerIdentifier: 'handleNoSpace',
   },
   {
-    id: 'dumb',
-    name: 'dumb',
+    id: 'shrug',
+    name: 'shrug',
     prefix: '.',
-    title: 'ЗаБоРчИк',
-    description: 'Чередование заглавных и строчных букв',
-    category: 'animations',
-    usage: '.dumb <текст>',
-    example: '.dumb Очень умный текст',
+    title: 'Пожатие плечами',
+    description: 'Отправляет текстовый смайлик ¯\\_(ツ)_/¯',
+    category: 'fun',
+    usage: '.shrug [текст]',
+    example: '.shrug Ну бывает',
     enabled: true,
+    featureStatus: 'REAL',
     requiresReply: false,
-    requiresArguments: true,
-    requiresConnection: true,
+    requiresArguments: false,
+    requiresConnection: false,
     requiresAI: false,
     requiresMedia: false,
     requiredPermissions: [],
     responseMode: 'SAME_CHAT',
     telegramMenu: false,
-    handlerIdentifier: 'handleDumb',
+    handlerIdentifier: 'handleShrug',
   },
   {
-    id: 'leet',
-    name: 'leet',
+    id: 'tableflip',
+    name: 'tableflip',
     prefix: '.',
-    title: '1337 H4x0r',
-    description: 'Трансформация текста в хакерский стиль 1337',
-    category: 'animations',
-    usage: '.leet <текст>',
-    example: '.leet elite hacker',
+    title: 'Перевернуть стол',
+    description: 'Отправляет эмоциональный смайлик (╯°□°)╯︵ ┻━┻',
+    category: 'fun',
+    usage: '.tableflip [текст]',
+    example: '.tableflip Всё пропало',
     enabled: true,
+    featureStatus: 'REAL',
     requiresReply: false,
-    requiresArguments: true,
-    requiresConnection: true,
+    requiresArguments: false,
+    requiresConnection: false,
     requiresAI: false,
     requiresMedia: false,
     requiredPermissions: [],
     responseMode: 'SAME_CHAT',
     telegramMenu: false,
-    handlerIdentifier: 'handleLeet',
+    handlerIdentifier: 'handleTableFlip',
   },
   {
-    id: 'zalgo',
-    name: 'zalgo',
+    id: 'unflip',
+    name: 'unflip',
     prefix: '.',
-    title: 'Zalgo глитч',
-    description: 'Наложение хаотичных глитч-символов Zalgo',
-    category: 'animations',
-    usage: '.zalgo <текст>',
-    example: '.zalgo Хаос наступает',
+    title: 'Поставить стол на место',
+    description: 'Отправляет спокойный смайлик ┬─┬ノ( º _ ºノ)',
+    category: 'fun',
+    usage: '.unflip [текст]',
+    example: '.unflip Спокойствие',
     enabled: true,
+    featureStatus: 'REAL',
     requiresReply: false,
-    requiresArguments: true,
-    requiresConnection: true,
+    requiresArguments: false,
+    requiresConnection: false,
     requiresAI: false,
     requiresMedia: false,
     requiredPermissions: [],
     responseMode: 'SAME_CHAT',
     telegramMenu: false,
-    handlerIdentifier: 'handleZalgo',
+    handlerIdentifier: 'handleUnflip',
   },
   {
-    id: 'heart',
-    name: 'heart',
+    id: 'calc',
+    name: 'calc',
     prefix: '.',
-    title: 'Сердечки',
-    description: 'Красивый узор из сердечек',
-    category: 'animations',
-    usage: '.heart',
-    example: '.heart',
+    title: 'Калькулятор',
+    description: 'Быстрые математические вычисления прямо в чате',
+    category: 'utility',
+    usage: '.calc <выражение>',
+    example: '.calc 25 * 4 + 10',
     enabled: true,
+    featureStatus: 'REAL',
+    requiresReply: false,
+    requiresArguments: true,
+    requiresConnection: false,
+    requiresAI: false,
+    requiresMedia: false,
+    requiredPermissions: [],
+    responseMode: 'SAME_CHAT',
+    telegramMenu: false,
+    handlerIdentifier: 'handleCalc',
+  },
+  {
+    id: 'ping',
+    name: 'ping',
+    prefix: '.',
+    title: 'Проверка связи (Ping)',
+    description: 'Проверка отклика бота и сетевой доступности Edge API',
+    category: 'utility',
+    usage: '.ping',
+    example: '.ping',
+    enabled: true,
+    featureStatus: 'REAL',
+    requiresReply: false,
+    requiresArguments: false,
+    requiresConnection: false,
+    requiresAI: false,
+    requiresMedia: false,
+    requiredPermissions: [],
+    responseMode: 'SAME_CHAT',
+    telegramMenu: false,
+    handlerIdentifier: 'handlePing',
+  },
+  {
+    id: 'weather',
+    name: 'weather',
+    prefix: '.',
+    title: 'Погода',
+    description: 'Текущий прогноз погоды для указанного города',
+    category: 'utility',
+    usage: '.weather [город]',
+    example: '.weather Москва',
+    enabled: true,
+    featureStatus: 'REAL',
+    requiresReply: false,
+    requiresArguments: false,
+    requiresConnection: false,
+    requiresAI: false,
+    requiresMedia: false,
+    requiredPermissions: [],
+    responseMode: 'SAME_CHAT',
+    telegramMenu: false,
+    handlerIdentifier: 'handleWeather',
+  },
+  {
+    id: 'quote',
+    name: 'quote',
+    prefix: '.',
+    title: 'Цитата',
+    description: 'Мудрая мысль или мотивирующая цитата дня',
+    category: 'fun',
+    usage: '.quote',
+    example: '.quote',
+    enabled: true,
+    featureStatus: 'REAL',
+    requiresReply: false,
+    requiresArguments: false,
+    requiresConnection: false,
+    requiresAI: false,
+    requiresMedia: false,
+    requiredPermissions: [],
+    responseMode: 'SAME_CHAT',
+    telegramMenu: false,
+    handlerIdentifier: 'handleQuote',
+  },
+  {
+    id: 'status',
+    name: 'status',
+    prefix: '.',
+    title: 'Статус чата',
+    description: 'Текущий статус автоматизации и режимов SerkoGram в чате',
+    category: 'utility',
+    usage: '.status',
+    example: '.status',
+    enabled: true,
+    featureStatus: 'REAL',
     requiresReply: false,
     requiresArguments: false,
     requiresConnection: true,
@@ -1558,27 +1589,7 @@ export const UNIFIED_COMMANDS: UnifiedCommandDefinition[] = [
     requiredPermissions: [],
     responseMode: 'SAME_CHAT',
     telegramMenu: false,
-    handlerIdentifier: 'handleHeart',
-  },
-  {
-    id: 'plove',
-    name: 'plove',
-    prefix: '.',
-    title: 'Признание в любви',
-    description: 'Тёплое признание с анимацией сердец',
-    category: 'animations',
-    usage: '.plove [имя]',
-    example: '.plove Аня',
-    enabled: true,
-    requiresReply: false,
-    requiresArguments: false,
-    requiresConnection: true,
-    requiresAI: false,
-    requiresMedia: false,
-    requiredPermissions: [],
-    responseMode: 'SAME_CHAT',
-    telegramMenu: false,
-    handlerIdentifier: 'handlePlove',
+    handlerIdentifier: 'handleStatus',
   },
 ];
 
@@ -1604,7 +1615,7 @@ export function getTelegramMenuCommands(): { command: string; description: strin
 export function getCommandByName(name: string, prefix?: '.' | '/'): UnifiedCommandDefinition | undefined {
   const normalized = name.trim().toLowerCase().replace(/^[./]/, '');
   return UNIFIED_COMMANDS.find((c) => {
-    const nameMatches = c.name.toLowerCase() === normalized;
+    const nameMatches = c.name.toLowerCase() === normalized || Boolean(c.aliases?.some((a) => a.toLowerCase() === normalized));
     if (!nameMatches) return false;
     if (prefix && !c.prefix.includes(prefix)) return false;
     return true;
@@ -1614,3 +1625,51 @@ export function getCommandByName(name: string, prefix?: '.' | '/'): UnifiedComma
 export function getCommandsByCategory(category: CommandCategory): UnifiedCommandDefinition[] {
   return UNIFIED_COMMANDS.filter((c) => c.category === category);
 }
+
+/**
+ * Startup validation: ensures no duplicate commands, duplicate aliases,
+ * invalid prefixes, or missing handlers exist in the registry.
+ */
+export function validateCommandRegistry(): void {
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
+  const seenAliases = new Set<string>();
+
+  for (const cmd of UNIFIED_COMMANDS) {
+    if (!cmd.id || !cmd.name) {
+      throw new Error(`[CommandRegistry] Command missing id or name: ${JSON.stringify(cmd)}`);
+    }
+
+    if (seenIds.has(cmd.id)) {
+      throw new Error(`[CommandRegistry] Duplicate command id detected: "${cmd.id}"`);
+    }
+    seenIds.add(cmd.id);
+
+    const normName = cmd.name.toLowerCase();
+    if (seenNames.has(normName)) {
+      throw new Error(`[CommandRegistry] Duplicate command name detected: "${cmd.name}"`);
+    }
+    seenNames.add(normName);
+
+    if (!['.', '/', '.|/'].includes(cmd.prefix)) {
+      throw new Error(`[CommandRegistry] Invalid prefix for command "${cmd.name}": "${cmd.prefix}"`);
+    }
+
+    if (!cmd.handlerIdentifier) {
+      throw new Error(`[CommandRegistry] Missing handlerIdentifier for command "${cmd.name}"`);
+    }
+
+    if (cmd.aliases) {
+      for (const alias of cmd.aliases) {
+        const normAlias = alias.toLowerCase();
+        if (seenNames.has(normAlias) || seenAliases.has(normAlias)) {
+          throw new Error(`[CommandRegistry] Duplicate or colliding alias detected: "${alias}" for command "${cmd.name}"`);
+        }
+        seenAliases.add(normAlias);
+      }
+    }
+  }
+}
+
+// Deterministic startup validation
+validateCommandRegistry();

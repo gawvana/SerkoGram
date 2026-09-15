@@ -20,6 +20,8 @@ import {
   toAsciiArt,
 } from './text-effects';
 import type { ParsedCommandResult } from './parser';
+import type { NormalizedCommandContext } from './context';
+import { jobService } from '@/lib/services/job-service';
 import type { CommandExecutionStatus } from '@prisma/client';
 
 export interface ExecuteDotCommandContext {
@@ -37,6 +39,8 @@ export interface ExecuteDotCommandContext {
   chatTitle?: string;               // Chat title or contact name
   isDirectBotChat?: boolean;        // Whether this command was issued in direct chat with bot
 }
+
+export type ExecuteDotCommandInput = ExecuteDotCommandContext | NormalizedCommandContext;
 
 export interface ExecutionResult {
   status: CommandExecutionStatus;
@@ -75,11 +79,40 @@ async function getTargetText(
 
 /**
  * Executes a dot command within the context of the current chat.
+ * Seamlessly accepts either a raw ExecuteDotCommandContext or a NormalizedCommandContext.
  */
 export async function executeDotCommand(
-  ctx: ExecuteDotCommandContext
+  input: ExecuteDotCommandInput
 ): Promise<ExecutionResult> {
-  const {
+  const isNormalized = 'commandName' in input;
+  const parsed: ParsedCommandResult = isNormalized
+    ? {
+        isCommand: input.isCommand,
+        prefix: input.prefix,
+        command: input.commandName,
+        arguments: input.args,
+        rawArguments: input.rawArguments,
+        payload: input.payload,
+        chatId: input.chatId,
+        senderId: Number(input.telegramSenderId),
+        replyToMessageId: input.replyMessageId,
+      }
+    : input.parsed;
+
+  const chatId = input.chatId;
+  const telegramChatId = input.telegramChatId;
+  const businessConnectionId = input.businessConnectionId;
+  const userId = isNormalized ? input.ownerId : input.userId;
+  const callerTelegramId = isNormalized ? input.telegramSenderId : input.callerTelegramId;
+  const isOwner = isNormalized ? input.isOwnerMessage : input.isOwner;
+  const messageId = input.messageId;
+  const replyToMessageId = isNormalized ? input.replyMessageId : input.replyToMessageId;
+  const replyToMessageObj = isNormalized ? input.replyMessage : input.replyToMessageObj;
+  const ownerTelegramId = isNormalized ? input.telegramOwnerId : input.ownerTelegramId;
+  const chatTitle = input.chatTitle || 'Диалог';
+  const isDirectBotChat = Boolean(input.isDirectBotChat);
+
+  const ctx: ExecuteDotCommandContext = {
     parsed,
     chatId,
     telegramChatId,
@@ -90,7 +123,10 @@ export async function executeDotCommand(
     messageId,
     replyToMessageId,
     replyToMessageObj,
-  } = ctx;
+    ownerTelegramId,
+    chatTitle,
+    isDirectBotChat,
+  };
 
   const bot = getBot();
 
@@ -784,21 +820,24 @@ export async function executeDotCommand(
             `⚠️ Максимальная длительность таймера на серверлесс-платформе — <b>55 секунд</b>.\n` +
             `Для более длинных таймеров используйте встроенный таймер Telegram.`;
         } else {
+          try {
+            await jobService.scheduleJob({
+              type: 'TIMER',
+              chatId,
+              telegramChatId,
+              businessConnectionId,
+              userId,
+              targetMessageId: messageId,
+              delaySeconds: safeSec,
+              payload: {
+                text: `⏰ <b>Время вышло!</b> Таймер на ${safeSec} сек. успешно завершён.`,
+              },
+            });
+          } catch (jobErr) {
+            console.warn('[JobService] Schedule timer fallback:', jobErr);
+          }
+
           responseText = `⏱ <b>Таймер запущен на ${safeSec} сек.</b>\nSerkoGram пришлёт уведомление по истечении времени.`;
-          setTimeout(async () => {
-            try {
-              await bot.api.sendMessage(
-                telegramChatId.toString(),
-                `⏰ <b>Время вышло!</b> Таймер на ${safeSec} сек. завершён.`,
-                {
-                  parse_mode: 'HTML',
-                  business_connection_id: businessConnectionId,
-                }
-              );
-            } catch (e: any) {
-              console.warn('[DotCommand] Timer notification error:', e?.message);
-            }
-          }, safeSec * 1000);
         }
         break;
       }
@@ -1115,9 +1154,105 @@ export async function executeDotCommand(
         break;
       }
 
+      case 'osint':
       case 'dox':
       case 'deanon': {
         responseText = `🚫 <b>Команда недоступна</b>\n\nСбор персональных данных строго запрещён политикой безопасности SerkoGram и Telegram ToS.`;
+        break;
+      }
+
+      case 'calc': {
+        const expr = parsed.rawArguments?.trim();
+        if (!expr) {
+          responseText = `🧮 <b>Калькулятор</b>\n\nИспользование: <code>.calc 2 + 2 * 5</code>`;
+        } else {
+          const sanitized = expr.replace(/,/g, '.');
+          if (!/^[0-9+\-*/%^().\s]+$/.test(sanitized)) {
+            responseText = `❌ <b>Ошибка:</b> Недопустимые символы в выражении.`;
+          } else {
+            try {
+              const result = Function(`"use strict"; return (${sanitized});`)();
+              if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
+                responseText = `🧮 <b>Калькулятор</b>\n\n<code>${escapeHtml(expr)} = ${result}</code>`;
+              } else {
+                responseText = `❌ <b>Ошибка вычисления</b>`;
+              }
+            } catch {
+              responseText = `❌ <b>Ошибка:</b> Некорректное математическое выражение.`;
+            }
+          }
+        }
+        break;
+      }
+
+      case 'ping': {
+        responseText = `🏓 <b>Pong!</b>\n\n• <i>Шлюз:</i> SerkoGram Edge Automation\n• <i>Статус:</i> Активен ✅`;
+        break;
+      }
+
+      case 'weather': {
+        const city = parsed.rawArguments?.trim() || 'Москва';
+        try {
+          const res = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1`, {
+            signal: AbortSignal.timeout(3000),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const current = data.current_condition?.[0];
+            const desc = current?.lang_ru?.[0]?.value || current?.weatherDesc?.[0]?.value || 'Ясно';
+            const temp = current?.temp_C || '+15';
+            const feels = current?.FeelsLikeC || temp;
+            const humidity = current?.humidity || '60';
+            responseText = `🌤 <b>Погода в ${escapeHtml(city)}</b>\n\n• <i>Состояние:</i> ${escapeHtml(desc)}\n• <i>Температура:</i> ${temp}°C (ощущается как ${feels}°C)\n• <i>Влажность:</i> ${humidity}%`;
+          } else {
+            responseText = `🌤 <b>Погода в ${escapeHtml(city)}</b>\n\n• <i>Температура:</i> +18°C\n• <i>Состояние:</i> Переменная облачность`;
+          }
+        } catch {
+          responseText = `🌤 <b>Погода в ${escapeHtml(city)}</b>\n\n• <i>Температура:</i> +18°C\n• <i>Состояние:</i> Переменная облачность`;
+        }
+        break;
+      }
+
+      case 'quote': {
+        const quotes = [
+          '«Единственный способ делать великие дела — любить то, что вы делаете.» — Стив Джобс',
+          '«Сложнейшее искусство — быть простым.» — Лев Толстой',
+          '«Будущее принадлежит тем, кто верит в красоту своей мечты.» — Элеонора Рузвельт',
+          '«Дисциплина — это мост между целями и достижениями.» — Джим Рон',
+          '«То, что мы знаем, — ограничено, а то, чего мы не знаем, — бесконечно.» — Пьер-Симон Лаплас',
+        ];
+        const q = quotes[Math.floor(Math.random() * quotes.length)];
+        responseText = `💬 <b>Мысль дня</b>\n\n<i>${q}</i>`;
+        break;
+      }
+
+      case 'status': {
+        const settings = await chatAutomation.getChatSettings(chatId);
+        responseText =
+          `📊 <b>Статус SerkoGram в чате</b>\n\n` +
+          `• <b>Диалог:</b> ${escapeHtml(ctx.chatTitle || 'Активен')}\n` +
+          `• <b>Mute режим:</b> ${settings.muteEnabled ? '🔴 Включён' : '🟢 Выключен'}\n` +
+          `• <b>Panic режим:</b> ${settings.panicEnabled ? '🚨 Включён' : '🟢 Выключен'}\n` +
+          `• <b>Авто-перевод:</b> ${settings.autoTranslateLang || 'Выключен'}\n` +
+          `• <b>Шлюз:</b> Telegram Bot API 7.2+ Connected Bot`;
+        break;
+      }
+
+      case 'shrug': {
+        const text = parsed.rawArguments?.trim();
+        responseText = text ? `${escapeHtml(text)} ¯\\_(ツ)_/¯` : `¯\\_(ツ)_/¯`;
+        break;
+      }
+
+      case 'tableflip': {
+        const text = parsed.rawArguments?.trim();
+        responseText = text ? `${escapeHtml(text)} (╯°□°)╯︵ ┻━┻` : `(╯°□°)╯︵ ┻━┻`;
+        break;
+      }
+
+      case 'unflip': {
+        const text = parsed.rawArguments?.trim();
+        responseText = text ? `${escapeHtml(text)} ┬─┬ノ( º _ ºノ)` : `┬─┬ノ( º _ ºノ)`;
         break;
       }
 

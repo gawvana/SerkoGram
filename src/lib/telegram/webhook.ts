@@ -16,7 +16,9 @@ import { logAudit } from '@/lib/services/audit-service';
 import { parseBotCommand } from './parser';
 import { executeCommand } from './handlers';
 import { parseAnyCommand } from '@/lib/commands/parser';
+import { resolveCommandContext } from '@/lib/commands/context';
 import { executeDotCommand } from '@/lib/commands/executor';
+import { jobService } from '@/lib/services/job-service';
 import { detectEphemeralAttributes } from '@/lib/services/ephemeral-service';
 import { renderTttKeyboard, handleTttStep, handleRpsGame } from './games';
 import type { MessageType } from '@prisma/client';
@@ -62,6 +64,11 @@ export async function processUpdate(update: Update): Promise<void> {
   } else if (update.callback_query) {
     await handleCallbackQuery(update);
   }
+
+  // Trigger sweep of any due durable scheduled jobs across serverless invocations
+  jobService.processDueJobs().catch((jobErr) => {
+    console.warn('[Webhook] Background job sweep note:', jobErr);
+  });
 
   // Mark update as processed ONLY after successful completion
   if (hasDb) {
@@ -270,18 +277,18 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
   // Determine message type
   const messageType = detectMessageType(msg);
 
-  // RELIABLE OUTGOING DETECTION:
-  // 1. is_from_offline is true when business owner sent it from an official client
-  // 2. Sender ID matches the authoritative business connection owner's Telegram ID
-  // 3. In private chats, if sender is not the chat partner, it was sent by business owner
-  const ownerTelegramId = realBc?.user?.id
-    ? BigInt(realBc.user.id)
-    : connection.user?.telegramId;
+  // Authoritative command & message context resolution
+  const cmdContext = resolveCommandContext({
+    msg,
+    chatId: chat.id,
+    telegramChatId: BigInt(msg.chat.id),
+    connection,
+    realBc,
+    isDirectBotChat: false,
+  });
 
-  const isOutgoing =
-    msg.is_from_offline === true ||
-    (ownerTelegramId && msg.from ? BigInt(msg.from.id) === ownerTelegramId : false) ||
-    (msg.chat.type === 'private' && msg.from ? msg.from.id !== msg.chat.id : false);
+  const isOutgoing = cmdContext.isOwnerMessage;
+  const ownerTelegramId = cmdContext.telegramOwnerId;
 
   // Save message to archive if user settings allow
   let saved: any = null;
@@ -312,7 +319,7 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
   // ============================================================
   // MUTE / PANIC ENFORCEMENT — auto-delete incoming if active
   // ============================================================
-  if (!isOutgoing && msg.business_connection_id) {
+  if (cmdContext.isIncomingMessage && msg.business_connection_id) {
     try {
       const automationSettings = await chatAutomation.getChatSettings(chat.id);
 
@@ -348,48 +355,23 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
     }
   }
 
-  // Handle dot and slash commands in business chat (e.g. .help, /p, .info, .save, .coin, .search, etc.)
-  if (msg.text && (msg.text.trim().startsWith('.') || msg.text.trim().startsWith('/'))) {
+  // Handle dot and slash commands in business chat (supporting both text and caption)
+  if (cmdContext.isCommand) {
     try {
-      const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'SerkoGram_bot';
-      const parsedDot = parseAnyCommand(msg.text, {
-        allowedPrefixes: ['.', '/'],
-        currentBotUsername: botUsername,
-        chatId: chat.id,
-        senderId: msg.from?.id,
-        replyToMessageId: msg.reply_to_message?.message_id,
-      });
-
-      if (parsedDot.isCommand) {
-        await executeDotCommand({
-          parsed: parsedDot,
-          chatId: chat.id,
-          telegramChatId: BigInt(msg.chat.id),
-          businessConnectionId: msg.business_connection_id,
-          userId: connection.userId,
-          callerTelegramId: msg.from ? BigInt(msg.from.id) : BigInt(0),
-          isOwner: isOutgoing,
-          messageId: msg.message_id,
-          replyToMessageId: msg.reply_to_message?.message_id,
-          replyToMessageObj: msg.reply_to_message,
-          ownerTelegramId: ownerTelegramId,
-          chatTitle: msg.chat.title || msg.chat.first_name || 'Диалог',
-          isDirectBotChat: false,
-        });
-      }
+      await executeDotCommand(cmdContext);
     } catch (cmdErr) {
       console.error('[Webhook] Error executing dot command:', cmdErr);
     }
-  } else if (!isOutgoing && msg.text) {
+  } else if (cmdContext.isIncomingMessage && cmdContext.effectiveText) {
     // Auto-translation for incoming messages in managed chat if enabled
     const settings2 = await chatAutomation.getChatSettings(chat.id);
     const autoLang = settings2.autoTranslateLang;
     if (autoLang && autoLang !== 'off') {
       try {
-        const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(msg.text)}&langpair=auto|${autoLang}`);
+        const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(cmdContext.effectiveText)}&langpair=auto|${autoLang}`);
         const data = await res.json();
         const translated = data?.responseData?.translatedText;
-        if (translated && translated.trim().toLowerCase() !== msg.text.trim().toLowerCase()) {
+        if (translated && translated.trim().toLowerCase() !== cmdContext.effectiveText.trim().toLowerCase()) {
           const bot = getBot();
           await bot.api.sendMessage(msg.chat.id.toString(), `🌐 <b>Перевод:</b> <i>${translated}</i>`, {
             parse_mode: 'HTML',
