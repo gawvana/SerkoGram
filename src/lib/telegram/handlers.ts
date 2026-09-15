@@ -4,6 +4,7 @@
 
 import { getBot } from './bot';
 import { COMMANDS_REGISTRY, isAiProviderConfigured } from './commands';
+import { renderTttKeyboard, handleRpsGame } from './games';
 import type { ParsedCommand } from './parser';
 import type { Message as TgMessage, Update } from 'grammy/types';
 
@@ -191,7 +192,6 @@ export async function executeCommand(msg: TgMessage, parsed: ParsedCommand): Pro
     case 'rps': {
       const userChoice = parsed.arguments[0]?.toLowerCase();
       const choices = ['камень', 'ножницы', 'бумага'];
-      const emojis: Record<string, string> = { камень: '🪨 Камень', ножницы: '✂️ Ножницы', бумага: '📄 Бумага' };
 
       if (!userChoice || !choices.includes(userChoice)) {
         await bot.api.sendMessage(chatId, `🎮 <b>Камень, ножницы, бумага</b>\nСделайте ваш ход:`, {
@@ -199,34 +199,19 @@ export async function executeCommand(msg: TgMessage, parsed: ParsedCommand): Pro
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '🪨 Камень', callback_data: 'rps:камень' },
-                { text: '✂️ Ножницы', callback_data: 'rps:ножницы' },
-                { text: '📄 Бумага', callback_data: 'rps:бумага' },
+                { text: '🪨 Камень', callback_data: 'rps:play:камень' },
+                { text: '✂️ Ножницы', callback_data: 'rps:play:ножницы' },
+                { text: '📄 Бумага', callback_data: 'rps:play:бумага' },
               ],
             ],
           },
         });
       } else {
-        const botChoice = choices[Math.floor(Math.random() * choices.length)];
-        let outcome = 'Ничья! 🤝';
-        if (
-          (userChoice === 'камень' && botChoice === 'ножницы') ||
-          (userChoice === 'ножницы' && botChoice === 'бумага') ||
-          (userChoice === 'бумага' && botChoice === 'камень')
-        ) {
-          outcome = 'Вы победили! 🎉';
-        } else if (userChoice !== botChoice) {
-          outcome = 'Бот победил! 🤖';
-        }
-
-        await bot.api.sendMessage(
-          chatId,
-          `🎮 <b>Камень, Ножницы, Бумага</b>\n\n` +
-            `Ваш выбор: <b>${emojis[userChoice]}</b>\n` +
-            `Выбор бота: <b>${emojis[botChoice]}</b>\n\n` +
-            `Результат: <b>${outcome}</b>`,
-          { parse_mode: 'HTML' }
-        );
+        const res = handleRpsGame(userChoice);
+        await bot.api.sendMessage(chatId, res.text, {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: res.keyboard },
+        });
       }
       break;
     }
@@ -234,27 +219,11 @@ export async function executeCommand(msg: TgMessage, parsed: ParsedCommand): Pro
     case 'ttt': {
       await bot.api.sendMessage(
         chatId,
-        `❌⭕ <b>Крестики-нолики</b>\nВыберите клетку для вашего первого хода:`,
+        `❌⭕ <b>Крестики-нолики</b>\nВыберите клетку для вашего первого хода (❌):`,
         {
           parse_mode: 'HTML',
           reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '⬜', callback_data: 'ttt:0' },
-                { text: '⬜', callback_data: 'ttt:1' },
-                { text: '⬜', callback_data: 'ttt:2' },
-              ],
-              [
-                { text: '⬜', callback_data: 'ttt:3' },
-                { text: '⬜', callback_data: 'ttt:4' },
-                { text: '⬜', callback_data: 'ttt:5' },
-              ],
-              [
-                { text: '⬜', callback_data: 'ttt:6' },
-                { text: '⬜', callback_data: 'ttt:7' },
-                { text: '⬜', callback_data: 'ttt:8' },
-              ],
-            ],
+            inline_keyboard: renderTttKeyboard('---------', false),
           },
         }
       );

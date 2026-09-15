@@ -17,6 +17,7 @@ import { executeCommand } from './handlers';
 import { parseAnyCommand } from '@/lib/commands/parser';
 import { executeDotCommand } from '@/lib/commands/executor';
 import { detectEphemeralAttributes } from '@/lib/services/ephemeral-service';
+import { renderTttKeyboard, handleTttStep, handleRpsGame } from './games';
 import type { MessageType } from '@prisma/client';
 
 // Grammy types
@@ -223,11 +224,15 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
   const messageType = detectMessageType(msg);
 
   // RELIABLE OUTGOING DETECTION:
-  // Compare real Telegram user ID of sender with the Telegram user ID of the business owner!
+  // 1. is_from_offline is true when business owner sent it from an official client
+  // 2. In private chats, if sender is not the chat partner, it was sent by business owner
+  // 3. Sender ID matches the business connection owner's Telegram ID
   const isOutgoing =
+    msg.is_from_offline === true ||
+    (msg.chat.type === 'private' && msg.from ? msg.from.id !== msg.chat.id : false) ||
     (msg.from && connection.user?.telegramId
       ? BigInt(msg.from.id) === connection.user.telegramId
-      : false) || msg.is_from_offline === true;
+      : false);
 
   // Save message
   const saved = await saveMessage({
@@ -353,10 +358,38 @@ async function handleBotMessage(msg: TgMessage): Promise<void> {
   if (!msg.text) return;
 
   const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'SerkoGram_bot';
-  const parsed = parseBotCommand(msg.text, botUsername);
+  const parsed = parseAnyCommand(msg.text, {
+    allowedPrefixes: ['.', '/'],
+    currentBotUsername: botUsername,
+    chatId: msg.chat.id,
+    senderId: msg.from?.id,
+    replyToMessageId: msg.reply_to_message?.message_id,
+  });
 
   if (parsed.isCommand) {
-    await executeCommand(msg, parsed);
+    await executeCommand(msg, parsed as any);
+  } else if (msg.chat.type === 'private') {
+    const bot = getBot();
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+    await bot.api
+      .sendMessage(
+        msg.chat.id,
+        `👋 <b>SerkoGram на связи!</b>\n\n` +
+          `Используйте команды меню (например <code>/start</code> или <code>/help</code>), или откройте Mini App:`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: appUrl
+            ? {
+                inline_keyboard: [
+                  [{ text: '📱 Открыть SerkoGram', web_app: { url: appUrl } }],
+                  [{ text: '📋 Каталог команд', callback_data: 'commands' }],
+                  [{ text: '❓ FAQ', callback_data: 'faq' }],
+                ],
+              }
+            : undefined,
+        }
+      )
+      .catch(() => null);
   }
 }
 
@@ -370,45 +403,95 @@ async function handleCallbackQuery(update: Update): Promise<void> {
 
   const bot = getBot();
   const chatId = query.message.chat.id;
+  const messageId = query.message.message_id;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
 
-  await bot.api.answerCallbackQuery(query.id);
+  await bot.api.answerCallbackQuery(query.id).catch(() => null);
 
-  if (query.data.startsWith('rps:')) {
-    const userChoice = query.data.split(':')[1];
-    const choices = ['камень', 'ножницы', 'бумага'];
-    const emojis: Record<string, string> = { камень: '🪨 Камень', ножницы: '✂️ Ножницы', бумага: '📄 Бумага' };
-    const botChoice = choices[Math.floor(Math.random() * choices.length)];
-
-    let outcome = 'Ничья! 🤝';
-    if (
-      (userChoice === 'камень' && botChoice === 'ножницы') ||
-      (userChoice === 'ножницы' && botChoice === 'бумага') ||
-      (userChoice === 'бумага' && botChoice === 'камень')
-    ) {
-      outcome = 'Вы победили! 🎉';
-    } else if (userChoice !== botChoice) {
-      outcome = 'Бот победил! 🤖';
-    }
-
-    await bot.api.sendMessage(
-      chatId,
-      `🎮 <b>Камень, Ножницы, Бумага</b>\n\n` +
-        `Ваш выбор: <b>${emojis[userChoice]}</b>\n` +
-        `Выбор бота: <b>${emojis[botChoice]}</b>\n\n` +
-        `Результат: <b>${outcome}</b>`,
-      { parse_mode: 'HTML' }
-    );
+  // Tic-Tac-Toe handling
+  if (query.data === 'ttt:noop') {
     return;
   }
 
-  if (query.data.startsWith('ttt:')) {
-    const cell = query.data.split(':')[1];
-    await bot.api.sendMessage(
-      chatId,
-      `❌ Вы поставили крестик на клетку #${Number(cell) + 1}. Бот делает ответный ход ⭕...`,
-      { parse_mode: 'HTML' }
-    );
+  if (query.data === 'ttt:reset') {
+    await bot.api
+      .editMessageText(
+        chatId,
+        messageId,
+        `❌⭕ <b>Крестики-нолики</b>\n\nВыберите клетку для вашего первого хода (❌):`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: renderTttKeyboard('---------', false),
+          },
+        }
+      )
+      .catch(() => null);
+    return;
+  }
+
+  if (query.data.startsWith('ttt:play:')) {
+    const parts = query.data.split(':');
+    const boardStr = parts[2] || '---------';
+    const moveIndex = Number(parts[3] ?? -1);
+
+    const step = handleTttStep(boardStr, moveIndex);
+    await bot.api
+      .editMessageText(chatId, messageId, step.text, {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: step.keyboard,
+        },
+      })
+      .catch(() => null);
+    return;
+  }
+
+  // Rock-Paper-Scissors handling
+  if (query.data === 'rps:reset') {
+    await bot.api
+      .editMessageText(
+        chatId,
+        messageId,
+        `🎮 <b>Камень, ножницы, бумага</b>\nСделайте ваш ход:`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '🪨 Камень', callback_data: 'rps:play:камень' },
+                { text: '✂️ Ножницы', callback_data: 'rps:play:ножницы' },
+                { text: '📄 Бумага', callback_data: 'rps:play:бумага' },
+              ],
+            ],
+          },
+        }
+      )
+      .catch(() => null);
+    return;
+  }
+
+  if (query.data.startsWith('rps:play:') || query.data.startsWith('rps:')) {
+    const choice = query.data.startsWith('rps:play:')
+      ? query.data.split(':')[2]
+      : query.data.split(':')[1];
+
+    const res = handleRpsGame(choice);
+    await bot.api
+      .editMessageText(chatId, messageId, res.text, {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: res.keyboard,
+        },
+      })
+      .catch(async () => {
+        await bot.api
+          .sendMessage(chatId, res.text, {
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: res.keyboard },
+          })
+          .catch(() => null);
+      });
     return;
   }
 

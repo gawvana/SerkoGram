@@ -77,40 +77,45 @@ export default function ConnectPage() {
               </div>
 
               <a
-                href="https://t.me/BotFather"
+                href="https://t.me/SerkoGram_bot"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-sg-purple text-white text-sm font-medium hover:bg-sg-purple-dark transition-colors"
               >
-                Подключить
+                Открыть @SerkoGram_bot
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
           </div>
         </div>
 
-        {/* Chat Automation */}
+        {/* Chat Automation / MTProto */}
         <div className="bg-sg-surface rounded-2xl p-5 border border-sg-border">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-sg-surface-2 flex items-center justify-center flex-shrink-0">
               <Zap className="w-5 h-5 text-sg-text-muted" />
             </div>
             <div className="flex-1">
-              <h3 className="text-base font-medium text-sg-text-primary">
-                Chat Automation
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-medium text-sg-text-primary">
+                  MTProto Userbot
+                </h3>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sg-surface-3 text-sg-text-muted font-medium">
+                  Режим D
+                </span>
+              </div>
               <p className="text-xs text-sg-text-secondary mt-1">
-                Автоматизация через поддерживаемый Telegram механизм. Расширенные возможности будут добавлены по мере появления официальной поддержки.
+                Прямое подключение сессии аккаунта без статуса Telegram Business. Не поддерживается на serverless-платформах (Vercel), так как MTProto требует постоянный фоновый процесс.
               </p>
 
               <div className="mt-3 space-y-2">
-                <PermissionItem label="Чтение сообщений" granted={false} />
-                <PermissionItem label="Получение удалений" granted={false} />
-                <PermissionItem label="Автоматизация" granted={false} />
+                <PermissionItem label="Telegram Business API (Официально)" granted={true} />
+                <PermissionItem label="Точечные команды (.) в чатах" granted={true} />
+                <PermissionItem label="MTProto постоянный daemon" granted={false} />
               </div>
 
-              <div className="mt-4 py-2.5 rounded-xl bg-sg-surface-2 text-center">
-                <span className="text-xs text-sg-text-muted">Скоро</span>
+              <div className="mt-4 py-2 rounded-xl bg-sg-surface-2 text-center">
+                <span className="text-xs text-sg-text-muted">Требуется выделенный сервер</span>
               </div>
             </div>
           </div>
