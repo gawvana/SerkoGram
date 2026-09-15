@@ -254,11 +254,37 @@ export async function executeCommand(msg: TgMessage, parsed: ParsedCommand): Pro
 
     case 'save': {
       if (msg.reply_to_message) {
-        await bot.api.sendMessage(
-          chatId,
-          `✅ <b>Сообщение сохранено!</b>\nОтветное сообщение зафиксировано в персональном архиве SerkoGram.`,
-          { parse_mode: 'HTML' }
-        );
+        try {
+          const { saveEphemeralMedia } = await import('@/lib/services/ephemeral-service');
+          // In direct bot chat, we don't have a DB chat record for the bot DM
+          // but we can still attempt to save the replied media
+          const res = await saveEphemeralMedia(
+            `bot_dm_${chatId}`,
+            msg.reply_to_message.message_id,
+            `tg_${userId}`,
+            msg.reply_to_message
+          );
+          if (res.success) {
+            await bot.api.sendMessage(
+              chatId,
+              `✅ <b>Сохранено в архив!</b>\n${res.message}`,
+              { parse_mode: 'HTML' }
+            );
+          } else {
+            await bot.api.sendMessage(
+              chatId,
+              `⚠️ <b>Не удалось сохранить:</b> ${escapeHtml(res.message)}`,
+              { parse_mode: 'HTML' }
+            );
+          }
+        } catch (saveErr: any) {
+          console.error('[Handler] /save error:', saveErr);
+          await bot.api.sendMessage(
+            chatId,
+            `❌ Ошибка при сохранении: ${escapeHtml(saveErr?.message || 'Неизвестная ошибка')}`,
+            { parse_mode: 'HTML' }
+          );
+        }
       } else {
         await bot.api.sendMessage(
           chatId,

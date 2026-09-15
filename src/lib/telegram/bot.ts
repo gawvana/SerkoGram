@@ -22,13 +22,23 @@ export function getBot(): Bot {
   return botInstance;
 }
 
+import crypto from 'crypto';
+
 /**
- * Verify the webhook secret token header.
+ * Verify the webhook secret token header using constant-time comparison.
  */
 export function verifyWebhookSecret(request: Request): boolean {
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
   if (!secret) return true; // No secret configured — skip check
 
   const headerSecret = request.headers.get('x-telegram-bot-api-secret-token');
-  return headerSecret === secret;
+  if (!headerSecret) return false;
+
+  const secretBuf = Buffer.from(secret, 'utf8');
+  const headerBuf = Buffer.from(headerSecret, 'utf8');
+  if (secretBuf.length !== headerBuf.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(secretBuf, headerBuf);
 }

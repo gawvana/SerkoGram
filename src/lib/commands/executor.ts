@@ -253,6 +253,20 @@ export async function executeDotCommand(
         break;
       }
 
+      case 'dice':
+      case 'дайс': {
+        try {
+          await bot.api.sendDice(telegramChatId.toString(), '🎲', {
+            business_connection_id: businessConnectionId,
+          });
+          responseText = null;
+        } catch {
+          const roll = Math.floor(Math.random() * 6) + 1;
+          responseText = `🎲 Выпало число: <b>${roll}</b>`;
+        }
+        break;
+      }
+
       case 'rps': {
         const userChoice = parsed.arguments[0]?.toLowerCase();
         const choices = ['камень', 'ножницы', 'бумага'];
@@ -324,20 +338,11 @@ export async function executeDotCommand(
       }
 
       case 'stt': {
-        if (!replyToMessageId) {
-          responseText = `🎙 Команда <code>.stt</code> используется в ответ на голосовое сообщение или видеозаметку для расшифровки в текст.`;
-        } else {
-          const replyCtx = await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj);
-          const hasAudio = replyCtx.media && (
-            replyCtx.media.mediaType === 'VOICE' ||
-            replyCtx.media.mediaType === 'AUDIO' ||
-            replyCtx.media.mediaType === 'VIDEO_NOTE'
-          );
-          responseText = hasAudio
-            ? `🎙 <b>Расшифровка голосового (STT):</b>\n\n<i>«Аудиодорожка успешно распознана.»</i>`
-            : `🎙 <b>STT:</b> В ответном сообщении не обнаружено аудиофайла или голосовой записи.`;
-          replyToId = replyToMessageId;
-        }
+        responseText =
+          `🎙 <b>Распознавание речи (STT)</b>\n\n` +
+          `⚠️ Функция временно недоступна.\n` +
+          `Для работы требуется подключение провайдера распознавания речи (Whisper / Google STT).\n\n` +
+          `<i>Функция появится в будущем обновлении SerkoGram.</i>`;
         break;
       }
 
@@ -382,10 +387,10 @@ export async function executeDotCommand(
         if (!lang) {
           responseText = `🌐 <b>Перевод сообщений</b>\nУкажите язык: <code>.перевод en</code> или <code>.перевод off</code> для отключения.`;
         } else if (lang === 'off') {
-          chatAutomation.setChatSettings(chatId, { autoTranslateLang: null });
+          await chatAutomation.setChatSettings(chatId, { autoTranslateLang: null });
           responseText = `🌐 Автоматический перевод сообщений в этом чате <b>отключён</b>.`;
         } else {
-          chatAutomation.setChatSettings(chatId, { autoTranslateLang: lang });
+          await chatAutomation.setChatSettings(chatId, { autoTranslateLang: lang });
           responseText = `🌐 Автоматический перевод сообщений в этом чате переключён на: <b>${escapeHtml(lang)}</b>.`;
         }
         break;
@@ -459,12 +464,11 @@ export async function executeDotCommand(
       }
 
       case 'гс': {
-        if (!replyToMessageId) {
-          responseText = `🎙 Команда <code>.гс</code> используется в ответ на голосовое сообщение или видеозаметку.`;
-        } else {
-          responseText = `🎙 Голосовое сообщение отправлено на обработку аудиодорожки.`;
-          replyToId = replyToMessageId;
-        }
+        responseText =
+          `🎙 <b>Обработка голосовых сообщений</b>\n\n` +
+          `⚠️ Функция временно недоступна.\n` +
+          `Для работы требуется подключение провайдера обработки аудио.\n\n` +
+          `<i>Функция появится в будущем обновлении SerkoGram.</i>`;
         break;
       }
 
@@ -596,22 +600,20 @@ export async function executeDotCommand(
       }
 
       case 'vnote': {
-        if (!replyToMessageId) {
-          responseText = `⭕ Команда <code>.vnote</code> используется в ответ на видео для конвертации в круглый видеоформат.`;
-        } else {
-          responseText = `⭕ <b>Видеокружок (Video Note)</b>\nВидеофайл принят в очередь конвертации SerkoGram.`;
-          replyToId = replyToMessageId;
-        }
+        responseText =
+          `⭕ <b>Видеокружок (Video Note)</b>\n\n` +
+          `⚠️ Функция временно недоступна.\n` +
+          `Конвертация видео в круглый формат требует серверной обработки FFmpeg.\n\n` +
+          `<i>Функция появится в будущем обновлении SerkoGram.</i>`;
         break;
       }
 
       case 'vreverse': {
-        if (!replyToMessageId) {
-          responseText = `⏪ Команда <code>.vreverse</code> используется в ответ на голосовое или видеосообщение для реверса.`;
-        } else {
-          responseText = `⏪ <b>Реверс аудио/видео</b>\nДорожка принята в обработку реверса.`;
-          replyToId = replyToMessageId;
-        }
+        responseText =
+          `⏪ <b>Реверс аудио/видео</b>\n\n` +
+          `⚠️ Функция временно недоступна.\n` +
+          `Реверс аудио и видео требует серверной обработки FFmpeg.\n\n` +
+          `<i>Функция появится в будущем обновлении SerkoGram.</i>`;
         break;
       }
 
@@ -625,7 +627,7 @@ export async function executeDotCommand(
         const targetUserId = replyCtx?.sender?.id ? replyCtx.sender.id.toString() : 'unknown';
         const targetName = replyCtx?.sender?.name || 'Собеседник';
         const reason = parsed.rawArguments?.trim() || 'Нарушение правил общения';
-        const warnResult = chatAutomation.addWarning(chatId, targetUserId, reason);
+        const warnResult = await chatAutomation.addWarning(chatId, targetUserId, reason);
         responseText =
           `⚠️ <b>Предупреждение [${warnResult.count}/${warnResult.threshold}]</b>\n\n` +
           `Пользователь: <b>${escapeHtml(targetName)}</b>\n` +
@@ -637,25 +639,67 @@ export async function executeDotCommand(
         break;
       }
 
+      case 'unmute':
       case 'mute': {
-        const replyCtx = replyToMessageId
-          ? await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj)
-          : null;
-        const targetName = replyCtx?.sender?.name || 'Собеседник';
-        const duration = parsed.rawArguments?.trim() || '15 минут';
-        responseText =
-          `🔇 <b>Ограничение диалога</b>\n\n` +
-          `Собеседник <b>${escapeHtml(targetName)}</b> заглушен в системе на <b>${escapeHtml(duration)}</b>.\n` +
-          `Уведомления отключены.`;
-        if (replyToMessageId) replyToId = replyToMessageId;
+        const durationArg = parsed.rawArguments?.trim() || '15';
+        const isOff = durationArg.toLowerCase() === 'off' || parsed.command === 'unmute';
+        const minutes = parseInt(durationArg, 10);
+        const safeMins = isNaN(minutes) || minutes < 1 ? 15 : Math.min(minutes, 1440);
+        const muteUntil = new Date(Date.now() + safeMins * 60 * 1000);
+
+        // Toggle off if already muted and user sends .mute off or .unmute
+        if (isOff) {
+          await chatAutomation.setChatSettings(chatId, {
+            muteEnabled: false,
+            muteUntil: null,
+          });
+          responseText =
+            `🔇 <b>Ограничение снято</b>\n\n` +
+            `Входящие сообщения собеседника больше не удаляются автоматически.`;
+        } else {
+          await chatAutomation.setChatSettings(chatId, {
+            muteEnabled: true,
+            muteUntil: muteUntil,
+          });
+          responseText =
+            `🔇 <b>Ограничение диалога активировано</b>\n\n` +
+            `Входящие сообщения собеседника будут автоматически удаляться на <b>${safeMins} мин.</b>\n` +
+            `Снять: <code>.mute off</code> или <code>.unmute</code>`;
+        }
         break;
       }
 
+      case 'unpanic':
       case 'panic': {
-        responseText =
-          `🚨 <b>Режим экстренной защиты (PANIC MODE)</b>\n\n` +
-          `• Временные токены и кэш сессии очищены.\n` +
-          `• Диалог переведён в защищённый режим.`;
+        const arg = parsed.rawArguments?.trim()?.toLowerCase();
+        const isOff = arg === 'off' || parsed.command === 'unpanic';
+        const targetOwnerId = ctx.ownerTelegramId || ctx.callerTelegramId;
+
+        if (isOff) {
+          await chatAutomation.setChatSettings(chatId, { panicEnabled: false });
+          responseText =
+            `🟢 <b>Режим PANIC отключён</b>\n\n` +
+            `Диалог возвращён в нормальный режим.`;
+        } else {
+          await chatAutomation.setChatSettings(chatId, { panicEnabled: true });
+
+          // Notify owner privately
+          await ownerNotificationService.notifyCommandResult({
+            userId,
+            telegramUserId: targetOwnerId,
+            command: '.panic',
+            title: '🚨 PANIC MODE активирован',
+            text: `Экстренный режим включён для чата «${escapeHtml(ctx.chatTitle || 'Диалог')}». Все входящие сообщения будут автоматически удаляться. Отключить: .panic off`,
+            chatId,
+            chatTitle: ctx.chatTitle,
+          }).catch(() => null);
+
+          responseText =
+            `🚨 <b>PANIC MODE активирован</b>\n\n` +
+            `• Все входящие сообщения собеседника удаляются автоматически.\n` +
+            `• Команды владельца продолжают обрабатываться.\n` +
+            `• Отключить: <code>.panic off</code>`;
+        }
         break;
       }
 
@@ -671,31 +715,43 @@ export async function executeDotCommand(
       // АВТОМАТИЗАЦИЯ И СТАТУСЫ
       // ------------------------------------------------------------
       case 'online': {
-        const state = parsed.arguments[0]?.toLowerCase();
-        const enabled = state !== 'off';
-        responseText = `🟢 <b>Вечный онлайн</b>: ${enabled ? '<b>Включён</b> (статус поддерживается через Connected Bot)' : '<b>Отключён</b>'}.`;
+        responseText =
+          `🟢 <b>Вечный онлайн</b>\n\n` +
+          `⚠️ Функция недоступна в режиме Bot API.\n` +
+          `Управление статусом онлайн требует MTProto User API (TDLib).\n\n` +
+          `<i>Планируется при подключении TDLib в будущем обновлении.</i>`;
         break;
       }
 
       case 'autotyping': {
-        const state = parsed.arguments[0]?.toLowerCase();
-        const enabled = state !== 'off';
-        responseText = `⌨️ <b>Авто-набор текста (Typing)</b>: ${enabled ? '<b>Включён</b>' : '<b>Отключён</b>'}.`;
+        responseText =
+          `⌨️ <b>Авто-набор текста</b>\n\n` +
+          `⚠️ Функция недоступна в режиме Bot API.\n` +
+          `Постоянная имитация набора требует MTProto User API (TDLib).\n\n` +
+          `<i>Используйте <code>.typing</code> для одноразового статуса «печатает».</i>`;
         break;
       }
 
       case 'autovoice': {
-        const state = parsed.arguments[0]?.toLowerCase();
-        const enabled = state !== 'off';
-        responseText = `🎙 <b>Имитация записи аудио</b>: ${enabled ? '<b>Включена</b>' : '<b>Отключена</b>'}.`;
+        responseText =
+          `🎙 <b>Имитация записи аудио</b>\n\n` +
+          `⚠️ Функция недоступна в режиме Bot API.\n` +
+          `Постоянная имитация записи голоса требует MTProto User API (TDLib).\n\n` +
+          `<i>Планируется при подключении TDLib в будущем обновлении.</i>`;
         break;
       }
 
       case 'timer': {
         const seconds = parseInt(parsed.arguments[0] || '10', 10);
-        const safeSec = isNaN(seconds) || seconds < 1 ? 10 : Math.min(seconds, 3600);
-        responseText = `⏱ <b>Таймер запущен на ${safeSec} сек.</b>\nSerkoGram пришлёт уведомление в этот чат по истечении времени.`;
-        if (safeSec <= 60) {
+        const safeSec = isNaN(seconds) || seconds < 1 ? 10 : Math.min(seconds, 55);
+
+        if (seconds > 55) {
+          responseText =
+            `⏱ <b>Таймер</b>\n\n` +
+            `⚠️ Максимальная длительность таймера на серверлесс-платформе — <b>55 секунд</b>.\n` +
+            `Для более длинных таймеров используйте встроенный таймер Telegram.`;
+        } else {
+          responseText = `⏱ <b>Таймер запущен на ${safeSec} сек.</b>\nSerkoGram пришлёт уведомление по истечении времени.`;
           setTimeout(async () => {
             try {
               await bot.api.sendMessage(
@@ -913,18 +969,11 @@ export async function executeDotCommand(
       }
 
       case 'clone': {
-        if (!replyToMessageId) {
-          responseText = `🎭 Команда <code>.clone</code> используется в ответ на сообщение пользователя.`;
-        } else {
-          const replyCtx = await resolveReplyContext(chatId, replyToMessageId, replyToMessageObj);
-          const s = replyCtx.sender;
-          responseText =
-            `🎭 <b>Клонирование профиля</b>\n\n` +
-            `• <b>Цель:</b> ${escapeHtml(s?.name || 'Пользователь')}\n` +
-            `• <b>ID:</b> <code>${s?.id ? s.id.toString() : 'неизвестен'}</code>\n` +
-            `• <b>Статус:</b> Метаданные скопированы в профиль клона.`;
-          replyToId = replyToMessageId;
-        }
+        responseText =
+          `🎭 <b>Клонирование профиля</b>\n\n` +
+          `⚠️ Функция недоступна.\n` +
+          `Telegram Bot API не предоставляет возможность клонирования профилей.\n` +
+          `Это ограничение платформы Telegram.`;
         break;
       }
 

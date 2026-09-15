@@ -503,3 +503,30 @@ model OwnerNotification {
   @@index([createdAt])
   @@map("owner_notifications")
 }
+
+model ChatAutomationSettings {
+  id                 String   @id @default(cuid())
+  chatId             String   @unique // Internal DB chat id
+  telegramChatId     BigInt
+  autoTranslateLang  String?  // null = disabled, "en"/"ru"/etc = enabled
+  muteEnabled        Boolean  @default(false)
+  muteUntil          DateTime?
+  panicEnabled       Boolean  @default(false)
+  autoTypingEnabled  Boolean  @default(false)
+  warningThreshold   Int      @default(3)
+  moderationEnabled  Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model ChatWarning {
+  id               String   @id @default(cuid())
+  chatId           String
+  targetTelegramId BigInt
+  reason           String?
+  count            Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([chatId, targetTelegramId])
+}

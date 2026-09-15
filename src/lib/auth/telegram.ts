@@ -56,7 +56,9 @@ export function validateInitData(initDataStr: string): TelegramInitData | null {
       .digest('hex');
 
     // Constant-time comparison
-    if (!crypto.timingSafeEqual(Buffer.from(computedHash), Buffer.from(hash))) {
+    const compBuf = Buffer.from(computedHash, 'utf8');
+    const hashBuf = Buffer.from(hash, 'utf8');
+    if (compBuf.length !== hashBuf.length || !crypto.timingSafeEqual(compBuf, hashBuf)) {
       return null;
     }
 

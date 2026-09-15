@@ -53,12 +53,15 @@ export interface BusinessRights {
   readMessages: boolean;
   deleteSentMessages: boolean;
   deleteReceivedMessages: boolean;
+  canDeleteAllMessages: boolean;
+  canDeleteOutgoingMessages: boolean;
   isEnabled: boolean;
 }
 
 /**
  * Checks actual Telegram Business rights for a connection.
  * Prioritizes authoritative Telegram state over local DB cache.
+ * Strict check: does not assume can_reply grants delete permissions.
  */
 export async function getBusinessRights(
   connectionId: string,
@@ -67,11 +70,19 @@ export async function getBusinessRights(
   if (telegramConnectionId) {
     const real = await getRealTelegramBusinessConnection(telegramConnectionId);
     if (real) {
+      const rights = (real as any).rights;
+      const canDeleteAll = Boolean(rights?.can_delete_all_messages);
+      const canDeleteOutgoing = Boolean(rights?.can_delete_outgoing_messages);
+      const canReply = Boolean(rights?.can_reply ?? (real as any).can_reply);
+      const readMessages = Boolean(rights?.can_read_messages ?? real.is_enabled);
+
       return {
-        canReply: Boolean(real.can_reply),
-        readMessages: Boolean(real.is_enabled),
-        deleteSentMessages: Boolean(real.can_reply),
-        deleteReceivedMessages: Boolean(real.can_reply),
+        canReply,
+        readMessages,
+        deleteSentMessages: canDeleteOutgoing,
+        deleteReceivedMessages: canDeleteAll,
+        canDeleteAllMessages: canDeleteAll,
+        canDeleteOutgoingMessages: canDeleteOutgoing,
         isEnabled: Boolean(real.is_enabled),
       };
     }
@@ -84,8 +95,10 @@ export async function getBusinessRights(
   return {
     canReply: conn?.canReply ?? false,
     readMessages: conn?.isEnabled ?? false,
-    deleteSentMessages: conn?.canReply ?? false,
-    deleteReceivedMessages: conn?.canReply ?? false,
+    deleteSentMessages: false,
+    deleteReceivedMessages: false,
+    canDeleteAllMessages: false,
+    canDeleteOutgoingMessages: false,
     isEnabled: conn?.isEnabled ?? false,
   };
 }
@@ -154,6 +167,11 @@ export class ConnectedBusinessBotAdapter implements ConnectionAdapter {
         granted: rights.canReply,
       },
       {
+        key: 'can_delete_all_messages',
+        label: 'Удаление сообщений собеседника (.mute/.panic)',
+        granted: rights.canDeleteAllMessages,
+      },
+      {
         key: 'selected_chats',
         label: 'Активное подключение к Telegram Business',
         granted: rights.isEnabled,
@@ -207,6 +225,9 @@ export class ConnectedBusinessBotAdapter implements ConnectionAdapter {
 
 export interface ChatAutomationSettings {
   autoTranslateLang?: string | null;
+  muteEnabled?: boolean;
+  muteUntil?: Date | null;
+  panicEnabled?: boolean;
   autoTypingEnabled?: boolean;
   warningThreshold?: number;
   moderationEnabled?: boolean;
@@ -214,8 +235,6 @@ export interface ChatAutomationSettings {
 
 export class ChatAutomationAdapter implements ConnectionAdapter {
   private base = new ConnectedBusinessBotAdapter();
-  private chatSettings = new Map<string, ChatAutomationSettings>();
-  private warnings = new Map<string, { count: number; lastWarningAt: Date; reason?: string }>();
 
   async getConnection(userId: string): Promise<BusinessConnection | null> {
     return this.base.getConnection(userId);
@@ -262,30 +281,150 @@ export class ChatAutomationAdapter implements ConnectionAdapter {
     return this.base.processDelete(chatId, messageIds);
   }
 
-  getChatSettings(chatId: string): ChatAutomationSettings {
-    return this.chatSettings.get(chatId) || {};
+  private fallbackSettings = new Map<string, ChatAutomationSettings>();
+  private fallbackWarnings = new Map<string, { count: number; threshold: number; exceeded: boolean }>();
+
+  async getChatSettings(chatId: string): Promise<ChatAutomationSettings> {
+    try {
+      if (prisma?.chatAutomationSettings) {
+        const settings = await prisma.chatAutomationSettings.findUnique({
+          where: { chatId },
+        });
+        if (settings) return settings;
+      }
+    } catch (e) {
+      // Fallback
+    }
+    return this.fallbackSettings.get(chatId) || {};
   }
 
-  setChatSettings(chatId: string, settings: Partial<ChatAutomationSettings>): void {
-    const current = this.getChatSettings(chatId);
-    this.chatSettings.set(chatId, { ...current, ...settings });
+  async setChatSettings(chatId: string, settings: Partial<ChatAutomationSettings>): Promise<void> {
+    const current = this.fallbackSettings.get(chatId) || {};
+    this.fallbackSettings.set(chatId, { ...current, ...settings });
+
+    try {
+      if (prisma?.chatAutomationSettings) {
+        const chat = await prisma.chat?.findUnique({ where: { id: chatId } });
+        const telegramChatId = chat?.telegramChatId ?? BigInt(0);
+
+        await prisma.chatAutomationSettings.upsert({
+          where: { chatId },
+          update: settings,
+          create: {
+            chatId,
+            telegramChatId,
+            autoTranslateLang: settings.autoTranslateLang,
+            muteEnabled: settings.muteEnabled ?? false,
+            muteUntil: settings.muteUntil,
+            panicEnabled: settings.panicEnabled ?? false,
+            autoTypingEnabled: settings.autoTypingEnabled ?? false,
+            warningThreshold: settings.warningThreshold ?? 3,
+            moderationEnabled: settings.moderationEnabled ?? false,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn('[ChatAutomation] Failed to persist chat settings to DB:', e);
+    }
   }
 
-  addWarning(chatId: string, targetUserId: string, reason?: string): { count: number; threshold: number; exceeded: boolean } {
-    const key = `${chatId}:${targetUserId}`;
-    const prev = this.warnings.get(key)?.count || 0;
-    const count = prev + 1;
-    this.warnings.set(key, { count, lastWarningAt: new Date(), reason });
-    const threshold = this.getChatSettings(chatId).warningThreshold || 3;
-    return { count, threshold, exceeded: count >= threshold };
+  async addWarning(chatId: string, targetUserId: string, reason?: string): Promise<{ count: number; threshold: number; exceeded: boolean }> {
+    let targetTelegramId = BigInt(0);
+    try {
+      if (targetUserId && targetUserId !== 'unknown') {
+        targetTelegramId = BigInt(targetUserId);
+      }
+    } catch {
+      targetTelegramId = BigInt(0);
+    }
+
+    const key = `${chatId}:${targetTelegramId.toString()}`;
+    const prevFallback = this.fallbackWarnings.get(key)?.count || 0;
+    const fallbackCount = prevFallback + 1;
+    const currentSettings = await this.getChatSettings(chatId);
+    const threshold = currentSettings.warningThreshold || 3;
+    const fallbackResult = {
+      count: fallbackCount,
+      threshold,
+      exceeded: fallbackCount >= threshold,
+    };
+    this.fallbackWarnings.set(key, fallbackResult);
+
+    try {
+      if (prisma?.chatWarning) {
+        const warning = await prisma.chatWarning.upsert({
+          where: {
+            chatId_targetTelegramId: { chatId, targetTelegramId }
+          },
+          update: {
+            count: { increment: 1 },
+            reason,
+          },
+          create: {
+            chatId,
+            targetTelegramId,
+            reason,
+            count: 1,
+          }
+        });
+        return { count: warning.count, threshold, exceeded: warning.count >= threshold };
+      }
+    } catch (e) {
+      console.warn('[ChatAutomation] Failed to persist warning to DB:', e);
+    }
+
+    return fallbackResult;
   }
 
-  getWarnings(chatId: string, targetUserId: string): number {
-    return this.warnings.get(`${chatId}:${targetUserId}`)?.count || 0;
+  async getWarnings(chatId: string, targetUserId: string): Promise<number> {
+    let targetTelegramId = BigInt(0);
+    try {
+      if (targetUserId && targetUserId !== 'unknown') {
+        targetTelegramId = BigInt(targetUserId);
+      }
+    } catch {
+      targetTelegramId = BigInt(0);
+    }
+
+    try {
+      if (prisma?.chatWarning) {
+        const warning = await prisma.chatWarning.findUnique({
+          where: {
+            chatId_targetTelegramId: { chatId, targetTelegramId }
+          }
+        });
+        if (warning) return warning.count;
+      }
+    } catch (e) {
+      // Fallback
+    }
+
+    return this.fallbackWarnings.get(`${chatId}:${targetTelegramId.toString()}`)?.count || 0;
   }
 
-  resetWarnings(chatId: string, targetUserId: string): void {
-    this.warnings.delete(`${chatId}:${targetUserId}`);
+  async resetWarnings(chatId: string, targetUserId: string): Promise<void> {
+    let targetTelegramId = BigInt(0);
+    try {
+      if (targetUserId && targetUserId !== 'unknown') {
+        targetTelegramId = BigInt(targetUserId);
+      }
+    } catch {
+      targetTelegramId = BigInt(0);
+    }
+
+    this.fallbackWarnings.delete(`${chatId}:${targetTelegramId.toString()}`);
+
+    try {
+      if (prisma?.chatWarning) {
+        await prisma.chatWarning.delete({
+          where: {
+            chatId_targetTelegramId: { chatId, targetTelegramId }
+          }
+        });
+      }
+    } catch (e) {
+      // Ignore if not found
+    }
   }
 }
 

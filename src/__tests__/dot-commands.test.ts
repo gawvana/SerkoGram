@@ -12,6 +12,23 @@ vi.mock('@/lib/db', () => ({
     message: {
       findUnique: vi.fn(),
     },
+    chat: {
+      findUnique: vi.fn().mockResolvedValue({ id: 'chat_1', telegramChatId: BigInt(100200300) }),
+    },
+    chatAutomationSettings: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({ id: 'cas_1' }),
+    },
+    chatWarning: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({ id: 'cw_1', count: 1 }),
+      delete: vi.fn().mockResolvedValue({ id: 'cw_1' }),
+    },
+    ownerNotification: {
+      create: vi.fn().mockResolvedValue({ id: 'notif_1' }),
+      update: vi.fn().mockResolvedValue({ id: 'notif_1' }),
+      findMany: vi.fn().mockResolvedValue([]),
+    },
   },
 }));
 

@@ -309,6 +309,45 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
     }
   }
 
+  // ============================================================
+  // MUTE / PANIC ENFORCEMENT — auto-delete incoming if active
+  // ============================================================
+  if (!isOutgoing && msg.business_connection_id) {
+    try {
+      const automationSettings = await chatAutomation.getChatSettings(chat.id);
+
+      // PANIC MODE: delete ALL incoming messages from interlocutor
+      if (automationSettings.panicEnabled) {
+        const bot = getBot();
+        try {
+          await bot.api.deleteMessage(msg.chat.id, msg.message_id);
+        } catch (delErr: any) {
+          console.warn('[ChatAutomation] Panic delete failed:', delErr?.description);
+        }
+        return; // Stop all further processing
+      }
+
+      // MUTE MODE: delete incoming if mute is active and not expired
+      if (automationSettings.muteEnabled) {
+        const muteExpired = automationSettings.muteUntil && new Date(automationSettings.muteUntil) < new Date();
+        if (muteExpired) {
+          // Mute expired, disable it
+          await chatAutomation.setChatSettings(chat.id, { muteEnabled: false, muteUntil: null });
+        } else {
+          const bot = getBot();
+          try {
+            await bot.api.deleteMessage(msg.chat.id, msg.message_id);
+          } catch (delErr: any) {
+            console.warn('[ChatAutomation] Mute delete failed:', delErr?.description);
+          }
+          return; // Stop further processing for muted messages
+        }
+      }
+    } catch (autoErr) {
+      console.warn('[ChatAutomation] Settings check error:', autoErr);
+    }
+  }
+
   // Handle dot and slash commands in business chat (e.g. .help, /p, .info, .save, .coin, .search, etc.)
   if (msg.text && (msg.text.trim().startsWith('.') || msg.text.trim().startsWith('/'))) {
     try {
@@ -343,7 +382,8 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
     }
   } else if (!isOutgoing && msg.text) {
     // Auto-translation for incoming messages in managed chat if enabled
-    const autoLang = chatAutomation.getChatSettings(chat.id).autoTranslateLang;
+    const settings2 = await chatAutomation.getChatSettings(chat.id);
+    const autoLang = settings2.autoTranslateLang;
     if (autoLang && autoLang !== 'off') {
       try {
         const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(msg.text)}&langpair=auto|${autoLang}`);
