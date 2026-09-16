@@ -43,8 +43,11 @@ export interface ExecuteDotCommandContext {
 
 export type ExecuteDotCommandInput = ExecuteDotCommandContext | NormalizedCommandContext;
 
+export type CommandCleanupStatus = 'CLEANED' | 'FAILED' | 'SKIPPED' | 'UNSUPPORTED';
+
 export interface ExecutionResult {
   status: CommandExecutionStatus;
+  cleanupStatus?: CommandCleanupStatus;
   responseMessage?: string;
   errorCode?: string;
   resultTelegramMessageId?: number;
@@ -1273,20 +1276,6 @@ export async function executeDotCommand(
         });
         sentMessageId = sent.message_id;
 
-        // Command Message Cleanup: For control commands (.mute, .panic, etc.), delete owner's command message
-        if (['mute', 'unmute', 'panic', 'unpanic'].includes(parsed.command)) {
-          if (ctx.isOwner && ctx.messageId && businessConnectionId) {
-            try {
-              const rights = await getBusinessRights('', businessConnectionId);
-              if (rights.canDeleteOutgoingMessages || rights.canDeleteAllMessages) {
-                await bot.api.deleteMessage(telegramChatId.toString(), ctx.messageId).catch(() => null);
-              }
-            } catch {
-              // Non-critical cleanup
-            }
-          }
-        }
-
         // Animation execution
         if (sentMessageId && ['p', 'love', 'love2', '-7', 'heart', 'plove'].includes(parsed.command)) {
           try {
@@ -1312,13 +1301,59 @@ export async function executeDotCommand(
       }
     }
 
-    // Update execution status to SUCCESS
+    // ------------------------------------------------------------
+    // Command Message Cleanup (Section 7, 8, 9)
+    // Deletes the owner's command message itself from managed chat
+    // Self-Protection: ONLY ctx.messageId is deleted, NEVER replyToId!
+    // ------------------------------------------------------------
+    let cleanupStatus: CommandCleanupStatus = 'SKIPPED';
+    let cleanupWarning: string | undefined = undefined;
+
+    if (ctx.isOwner && ctx.messageId) {
+      if (businessConnectionId) {
+        try {
+          const rights = await getBusinessRights('', businessConnectionId).catch(() => ({
+            canReply: true,
+            canDeleteOutgoingMessages: true,
+            canDeleteAllMessages: false,
+          }));
+
+          if (rights.canDeleteOutgoingMessages || rights.canDeleteAllMessages) {
+            if (typeof (bot.api as any).deleteBusinessMessages === 'function') {
+              await (bot.api as any).deleteBusinessMessages(businessConnectionId, [ctx.messageId]);
+              cleanupStatus = 'CLEANED';
+            } else {
+              await bot.api.deleteMessage(telegramChatId.toString(), ctx.messageId);
+              cleanupStatus = 'CLEANED';
+            }
+          } else {
+            cleanupStatus = 'UNSUPPORTED';
+            cleanupWarning = 'Missing business permission to delete messages';
+          }
+        } catch (cleanErr: any) {
+          console.warn('[DotCommand] Command message cleanup failed:', cleanErr?.description || cleanErr?.message);
+          cleanupStatus = 'FAILED';
+          cleanupWarning = cleanErr?.message || 'Delete failed';
+        }
+      } else if (ctx.isDirectBotChat) {
+        try {
+          await bot.api.deleteMessage(telegramChatId.toString(), ctx.messageId);
+          cleanupStatus = 'CLEANED';
+        } catch (cleanErr: any) {
+          cleanupStatus = 'FAILED';
+          cleanupWarning = cleanErr?.message || 'Delete failed';
+        }
+      }
+    }
+
+    // Update execution status to SUCCESS (recording cleanup warning if failed)
     if (execution) {
       await prisma.commandExecution.update({
         where: { id: execution.id },
         data: {
           status: 'SUCCESS',
           resultMessageId: sentMessageId || null,
+          errorCode: cleanupStatus === 'FAILED' ? `CLEANUP_WARNING: ${cleanupWarning}` : null,
           completedAt: new Date(),
         },
       }).catch(() => null);
@@ -1326,8 +1361,10 @@ export async function executeDotCommand(
 
     return {
       status: 'SUCCESS',
+      cleanupStatus,
       responseMessage: responseText ?? undefined,
       resultTelegramMessageId: sentMessageId,
+      errorCode: cleanupStatus === 'FAILED' ? `CLEANUP_WARNING: ${cleanupWarning}` : undefined,
     };
   } catch (error: any) {
     console.error('[DotCommand] Error executing command:', parsed.command, error);

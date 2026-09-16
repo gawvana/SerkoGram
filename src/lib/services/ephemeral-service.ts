@@ -3,7 +3,7 @@
 // ============================================================
 
 import { prisma } from '@/lib/db';
-import { downloadAndStoreMedia } from './media-service';
+import { downloadAndStoreMedia, extractTelegramMedia } from './media-service';
 import type { MessageMedia, ArchiveStatus } from '@prisma/client';
 
 export interface EphemeralSaveResult {
@@ -71,51 +71,10 @@ export async function saveEphemeralMedia(
     },
   });
 
-  // If message or media is not in DB yet, but raw reply_to_message object contains media
-  if ((!message || message.media.length === 0) && rawReplyToObj) {
-    let fileId: string | undefined;
-    let fileUniqueId: string | undefined;
-    let mediaType: any = 'PHOTO';
-    let fileName: string | undefined;
-    let mimeType: string | undefined;
-    let fileSize: number | undefined;
-
-    if (rawReplyToObj.photo && rawReplyToObj.photo.length > 0) {
-      const p = rawReplyToObj.photo[rawReplyToObj.photo.length - 1];
-      fileId = p.file_id;
-      fileUniqueId = p.file_unique_id;
-      fileSize = p.file_size;
-      mediaType = 'PHOTO';
-      mimeType = 'image/jpeg';
-    } else if (rawReplyToObj.video) {
-      fileId = rawReplyToObj.video.file_id;
-      fileUniqueId = rawReplyToObj.video.file_unique_id;
-      fileSize = rawReplyToObj.video.file_size;
-      mediaType = 'VIDEO';
-      mimeType = rawReplyToObj.video.mime_type || 'video/mp4';
-      fileName = rawReplyToObj.video.file_name;
-    } else if (rawReplyToObj.voice) {
-      fileId = rawReplyToObj.voice.file_id;
-      fileUniqueId = rawReplyToObj.voice.file_unique_id;
-      fileSize = rawReplyToObj.voice.file_size;
-      mediaType = 'VOICE';
-      mimeType = rawReplyToObj.voice.mime_type || 'audio/ogg';
-    } else if (rawReplyToObj.video_note) {
-      fileId = rawReplyToObj.video_note.file_id;
-      fileUniqueId = rawReplyToObj.video_note.file_unique_id;
-      fileSize = rawReplyToObj.video_note.file_size;
-      mediaType = 'VIDEO_NOTE';
-      mimeType = 'video/mp4';
-    } else if (rawReplyToObj.document) {
-      fileId = rawReplyToObj.document.file_id;
-      fileUniqueId = rawReplyToObj.document.file_unique_id;
-      fileSize = rawReplyToObj.document.file_size;
-      mediaType = 'DOCUMENT';
-      mimeType = rawReplyToObj.document.mime_type || 'application/octet-stream';
-      fileName = rawReplyToObj.document.file_name;
-    }
-
-    if (fileId && fileUniqueId) {
+  // 1. If rawReplyToObj contains media, extract canonically
+  if (rawReplyToObj) {
+    const extracted = extractTelegramMedia(rawReplyToObj);
+    if (extracted) {
       try {
         const targetMsg = message || await prisma.message.upsert({
           where: {
@@ -128,45 +87,99 @@ export async function saveEphemeralMedia(
             chatId,
             telegramMessageId: replyToMessageId,
             isOutgoing: false,
-            messageType: mediaType || 'PHOTO',
+            messageType: extracted.mediaType,
             text: rawReplyToObj.caption || rawReplyToObj.text,
             telegramDate: new Date((rawReplyToObj.date || Math.floor(Date.now() / 1000)) * 1000),
           },
           update: {},
         });
 
-        await downloadAndStoreMedia(
+        const dlResult = await downloadAndStoreMedia(
           targetMsg.id,
-          fileId,
-          fileUniqueId,
-          mediaType,
-          { fileName, mimeType, fileSize }
+          extracted.fileId,
+          extracted.fileUniqueId,
+          extracted.mediaType.toLowerCase(),
+          {
+            fileName: extracted.fileName,
+            mimeType: extracted.mimeType,
+            fileSize: extracted.fileSize,
+            width: extracted.width,
+            height: extracted.height,
+            duration: extracted.duration,
+            isEphemeral: extracted.isEphemeral,
+            isViewOnce: extracted.isViewOnce,
+            ttlSeconds: extracted.ttlSeconds,
+          }
         );
 
+        if (!dlResult.success) {
+          return {
+            success: false,
+            archiveStatus: 'FAILED',
+            message: dlResult.error || 'Ошибка загрузки медиафайла',
+            error: dlResult.error || 'Ошибка загрузки медиафайла',
+          };
+        }
+
         const storedMedia = await prisma.messageMedia.findFirst({
-          where: { messageId: targetMsg.id, fileUniqueId },
+          where: { messageId: targetMsg.id, fileUniqueId: extracted.fileUniqueId },
         });
 
-        const ephAttr = detectEphemeralAttributes(rawReplyToObj);
         return {
           success: true,
           archiveStatus: 'ARCHIVED',
-          message: `Медиафайл успешно зафиксирован и сохранён в защищённом архиве SerkoGram!`,
+          message: 'Медиафайл успешно зафиксирован и сохранён в защищённом архиве SerkoGram!',
           media: storedMedia,
-          isViewOnce: ephAttr.isViewOnce,
-          isEphemeral: ephAttr.isEphemeral,
+          isViewOnce: extracted.isViewOnce,
+          isEphemeral: extracted.isEphemeral,
         };
       } catch (dlErr: any) {
         console.warn('[EphemeralService] Direct download note:', dlErr?.message);
+        return {
+          success: false,
+          archiveStatus: 'FAILED',
+          message: 'Ошибка при сохранении медиафайла',
+          error: dlErr?.message,
+        };
       }
+    }
+
+    // 2. If rawReplyToObj is a plain text message: archive text message!
+    if (rawReplyToObj.text) {
+      await prisma.message.upsert({
+        where: {
+          chatId_telegramMessageId: {
+            chatId,
+            telegramMessageId: replyToMessageId,
+          },
+        },
+        create: {
+          chatId,
+          telegramMessageId: replyToMessageId,
+          isOutgoing: false,
+          messageType: 'TEXT',
+          text: rawReplyToObj.text,
+          telegramDate: new Date((rawReplyToObj.date || Math.floor(Date.now() / 1000)) * 1000),
+        },
+        update: {
+          text: rawReplyToObj.text,
+        },
+      });
+
+      return {
+        success: true,
+        archiveStatus: 'ARCHIVED',
+        message: 'Текстовое сообщение успешно сохранено в вашем защищённом архиве SerkoGram!',
+      };
     }
   }
 
+  // 3. Fallback to existing message in DB
   if (!message) {
     return {
       success: false,
       archiveStatus: 'UNAVAILABLE',
-      message: 'Сообщение с медиафайлом не найдено в архиве для сохранения.',
+      message: 'Сообщение не найдено в архиве для сохранения.',
       error: 'Сообщение не найдено в архиве',
     };
   }
@@ -181,12 +194,20 @@ export async function saveEphemeralMedia(
     };
   }
 
+  // If existing message is text without media
   if (message.media.length === 0) {
+    if (message.text) {
+      return {
+        success: true,
+        archiveStatus: 'ARCHIVED',
+        message: 'Сообщение успешно сохранено в вашем защищённом архиве SerkoGram.',
+      };
+    }
     return {
       success: false,
       archiveStatus: 'UNAVAILABLE',
-      message: 'В ответном сообщении не обнаружено медиафайлов. Команда .save используется для сохранения медиа (фото, видео, голосовые, видеозаметки, документы, одноразовые файлы). Текстовые сообщения сохраняются автоматически.',
-      error: 'В ответном сообщении нет медиафайлов (.save используется для медиа)',
+      message: 'В ответном сообщении не обнаружено медиафайлов или сохраняемого текста.',
+      error: 'В ответном сообщении нет медиафайлов или текста для сохранения',
     };
   }
 
@@ -207,7 +228,7 @@ export async function saveEphemeralMedia(
   // Attempt to download and store
   try {
     if (media.telegramFileId && media.fileUniqueId) {
-      await downloadAndStoreMedia(
+      const dlRes = await downloadAndStoreMedia(
         message.id,
         media.telegramFileId,
         media.fileUniqueId,
@@ -218,6 +239,15 @@ export async function saveEphemeralMedia(
           fileSize: media.fileSize || undefined,
         }
       );
+
+      if (!dlRes.success) {
+        return {
+          success: false,
+          archiveStatus: 'FAILED',
+          message: dlRes.error || 'Ошибка загрузки медиафайла',
+          error: dlRes.error || 'Ошибка загрузки медиафайла',
+        };
+      }
 
       const updated = await prisma.messageMedia.update({
         where: { id: media.id },

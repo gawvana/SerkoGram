@@ -11,7 +11,7 @@ import {
   processDeletedMessages,
 } from '@/lib/services/message-service';
 import { getRealTelegramBusinessConnection, chatAutomation } from '@/lib/services/connection-service';
-import { downloadAndStoreMedia } from '@/lib/services/media-service';
+import { downloadAndStoreMedia, extractTelegramMedia, type MediaSaveResult } from '@/lib/services/media-service';
 import { logAudit } from '@/lib/services/audit-service';
 import { parseBotCommand } from './parser';
 import { executeCommand } from './handlers';
@@ -690,8 +690,30 @@ async function handleCallbackQuery(update: Update): Promise<void> {
     const expectedOwnerId = parts[3];
     const callerTelegramId = query.from?.id ? query.from.id.toString() : '';
 
-    // Hard Security Guard: Verify caller is owner
-    if (expectedOwnerId && callerTelegramId && expectedOwnerId !== callerTelegramId) {
+    // Zero-Trust Callback Authorization (Section 11)
+    // Never trust callback_data for identity; resolve chat & DB owner
+    if (targetChatId) {
+      const targetChat = await prisma.chat.findUnique({
+        where: { id: targetChatId },
+        include: { connection: { include: { user: true } } },
+      }).catch(() => null);
+
+      if (targetChat?.connection?.user?.telegramId) {
+        if (targetChat.connection.user.telegramId.toString() !== callerTelegramId) {
+          await bot.api.answerCallbackQuery(query.id, {
+            text: '⛔ Только владелец чата может управлять этим режимом.',
+            show_alert: true,
+          }).catch(() => null);
+          return;
+        }
+      } else if (expectedOwnerId && callerTelegramId && expectedOwnerId !== callerTelegramId) {
+        await bot.api.answerCallbackQuery(query.id, {
+          text: '⛔ Только владелец чата может управлять этим режимом.',
+          show_alert: true,
+        }).catch(() => null);
+        return;
+      }
+    } else if (expectedOwnerId && callerTelegramId && expectedOwnerId !== callerTelegramId) {
       await bot.api.answerCallbackQuery(query.id, {
         text: '⛔ Только владелец чата может управлять этим режимом.',
         show_alert: true,
@@ -913,88 +935,35 @@ function detectMessageType(msg: TgMessage): MessageType {
   return 'UNKNOWN';
 }
 
-async function processMediaFromMessage(msg: TgMessage, messageId: string): Promise<void> {
+async function processMediaFromMessage(msg: TgMessage, messageId: string): Promise<MediaSaveResult | null> {
   try {
-    const eph = detectEphemeralAttributes(msg);
-    const ephMeta = {
-      isEphemeral: eph.isEphemeral,
-      isViewOnce: eph.isViewOnce,
-      ttlSeconds: eph.ttlSeconds,
-    };
+    const extracted = extractTelegramMedia(msg);
+    if (!extracted) return null;
 
-    if (msg.photo && msg.photo.length > 0) {
-      const largest = msg.photo[msg.photo.length - 1];
-      await downloadAndStoreMedia(messageId, largest.file_id, largest.file_unique_id, 'photo', {
-        width: largest.width,
-        height: largest.height,
-        fileSize: largest.file_size,
-        mimeType: 'image/jpeg',
-        ...ephMeta,
-      });
-    }
+    const result = await downloadAndStoreMedia(
+      messageId,
+      extracted.fileId,
+      extracted.fileUniqueId,
+      extracted.mediaType.toLowerCase(),
+      {
+        width: extracted.width,
+        height: extracted.height,
+        duration: extracted.duration,
+        fileSize: extracted.fileSize,
+        mimeType: extracted.mimeType,
+        fileName: extracted.fileName,
+        isEphemeral: extracted.isEphemeral,
+        isViewOnce: extracted.isViewOnce,
+        ttlSeconds: extracted.ttlSeconds,
+      }
+    );
 
-    if (msg.video) {
-      await downloadAndStoreMedia(messageId, msg.video.file_id, msg.video.file_unique_id, 'video', {
-        width: msg.video.width,
-        height: msg.video.height,
-        duration: msg.video.duration,
-        fileSize: msg.video.file_size,
-        mimeType: msg.video.mime_type,
-        fileName: msg.video.file_name,
-        ...ephMeta,
-      });
+    if (!result.success) {
+      console.warn(`[Webhook] Media archive notice: ${result.status} (${result.error})`);
     }
-
-    if (msg.document) {
-      await downloadAndStoreMedia(messageId, msg.document.file_id, msg.document.file_unique_id, 'document', {
-        fileSize: msg.document.file_size,
-        mimeType: msg.document.mime_type,
-        fileName: msg.document.file_name,
-      });
-    }
-
-    if (msg.audio) {
-      await downloadAndStoreMedia(messageId, msg.audio.file_id, msg.audio.file_unique_id, 'audio', {
-        duration: msg.audio.duration,
-        fileSize: msg.audio.file_size,
-        mimeType: msg.audio.mime_type,
-        fileName: msg.audio.file_name,
-      });
-    }
-
-    if (msg.voice) {
-      await downloadAndStoreMedia(messageId, msg.voice.file_id, msg.voice.file_unique_id, 'voice', {
-        duration: msg.voice.duration,
-        fileSize: msg.voice.file_size,
-        mimeType: msg.voice.mime_type,
-      });
-    }
-
-    if (msg.video_note) {
-      await downloadAndStoreMedia(messageId, msg.video_note.file_id, msg.video_note.file_unique_id, 'video_note', {
-        duration: msg.video_note.duration,
-        fileSize: msg.video_note.file_size,
-      });
-    }
-
-    if (msg.sticker) {
-      await downloadAndStoreMedia(messageId, msg.sticker.file_id, msg.sticker.file_unique_id, 'sticker', {
-        width: msg.sticker.width,
-        height: msg.sticker.height,
-      });
-    }
-
-    if (msg.animation) {
-      await downloadAndStoreMedia(messageId, msg.animation.file_id, msg.animation.file_unique_id, 'animation', {
-        width: msg.animation.width,
-        height: msg.animation.height,
-        duration: msg.animation.duration,
-        fileSize: msg.animation.file_size,
-        mimeType: msg.animation.mime_type,
-        fileName: msg.animation.file_name,
-      });
-    }
+    return result;
   } catch (error) {
     console.error('[Webhook] Error processing media:', error);
+    return null;
   }
 }
