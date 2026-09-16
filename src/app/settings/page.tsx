@@ -135,8 +135,8 @@ export default function SettingsPage() {
 
       {/* Toast */}
       {toastMessage && (
-        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-sg-surface border border-sg-purple text-white px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-lg animate-fade-in">
-          <Check className="w-3.5 h-3.5 text-sg-purple" />
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-sg-surface border border-emerald-500 text-white px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-lg animate-fade-in">
+          <Check className="w-3.5 h-3.5 text-emerald-400" />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -144,7 +144,7 @@ export default function SettingsPage() {
       <div className="p-4 space-y-6">
         {/* Section 1: AutoSave & Message Rules */}
         <section className="space-y-2">
-          <h3 className="text-xs font-semibold text-sg-purple uppercase tracking-wider px-1">
+          <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider px-1">
             Параметры архивации
           </h3>
 
@@ -196,7 +196,7 @@ export default function SettingsPage() {
 
         {/* Section 2: Privacy & Retention */}
         <section className="space-y-2">
-          <h3 className="text-xs font-semibold text-sg-purple uppercase tracking-wider px-1 flex items-center gap-1.5">
+          <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider px-1 flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5" />
             Срок хранения данных
           </h3>
@@ -220,7 +220,7 @@ export default function SettingsPage() {
                   onClick={() => privacyMutation.mutate(item.key)}
                   className={`py-2 px-3 rounded-xl text-xs font-medium border transition-all text-center ${
                     privacy?.retention === item.key
-                      ? 'bg-sg-purple/20 border-sg-purple text-white'
+                      ? 'bg-emerald-500/15 border-emerald-500 text-white'
                       : 'bg-sg-surface-2 border-sg-border text-sg-text-secondary hover:bg-sg-surface-3'
                   }`}
                 >
@@ -243,7 +243,7 @@ export default function SettingsPage() {
             </div>
             <Link
               href="/connect"
-              className="flex items-center gap-1 text-xs text-sg-purple font-medium hover:underline"
+              className="flex items-center gap-1 text-xs text-emerald-400 font-medium hover:underline"
             >
               Открыть <ExternalLink className="w-3.5 h-3.5" />
             </Link>
@@ -386,7 +386,7 @@ function ToggleRow({
           aria-checked={checked}
           onClick={onChange}
           className={`relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0 ${
-            checked ? 'bg-sg-purple' : 'bg-sg-surface-3'
+            checked ? 'bg-emerald-500' : 'bg-sg-surface-3'
           }`}
         >
           <span

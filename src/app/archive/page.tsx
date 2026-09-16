@@ -73,7 +73,7 @@ export default function ArchivePage() {
             placeholder="Поиск..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-sg-surface-2 rounded-xl pl-9 pr-9 py-2.5 text-sm text-sg-text-primary placeholder:text-sg-text-muted border border-sg-border focus:border-sg-purple focus:outline-none transition-colors"
+            className="w-full bg-sg-surface-2 rounded-xl pl-9 pr-9 py-2.5 text-sm text-sg-text-primary placeholder:text-sg-text-muted border border-sg-border focus:border-emerald-500 focus:outline-none transition-colors"
             aria-label="Поиск по архиву"
           />
           {searchQuery && (
@@ -95,7 +95,7 @@ export default function ArchivePage() {
               onClick={() => setActiveFilter(f.key)}
               className={`px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
                 activeFilter === f.key
-                  ? 'bg-sg-purple text-white'
+                  ? 'bg-emerald-500 text-white'
                   : 'bg-sg-surface-2 text-sg-text-secondary hover:bg-sg-surface-3'
               }`}
             >
@@ -130,7 +130,7 @@ export default function ArchivePage() {
             </p>
             <Link
               href="/connect"
-              className="mt-4 px-6 py-2.5 rounded-xl bg-sg-purple text-white text-sm font-medium hover:bg-sg-purple-dark transition-colors"
+              className="mt-4 px-6 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-medium hover:bg-emerald-600 transition-colors"
             >
               Подключить Telegram
             </Link>
@@ -153,7 +153,7 @@ export default function ArchivePage() {
                       className="w-12 h-12 rounded-full object-cover"
                     />
                   ) : (
-                    <span className="text-lg font-medium text-sg-purple">
+                    <span className="text-lg font-medium text-emerald-400">
                       {(chat.title ?? '?')[0].toUpperCase()}
                     </span>
                   )}

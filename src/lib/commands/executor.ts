@@ -273,7 +273,7 @@ export async function executeDotCommand(
           replyToId = replyToMessageId;
         } else {
           responseText =
-            `🟣 <b>SerkoGram</b>\n\n` +
+            `🟢 <b>SerkoGram</b>\n\n` +
             `• <b>Статус</b>: Подключено и активно\n` +
             `• <b>Режим</b>: Точечные команды (.)\n` +
             `• <b>Контекст</b>: Интеграция SerkoGram активна.`;

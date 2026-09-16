@@ -43,7 +43,7 @@ export async function executeCommand(msg: TgMessage, parsed: ParsedCommand): Pro
 
       await bot.api.sendMessage(
         chatId,
-        `🟣 <b>SerkoGram</b>\n\n` +
+        `🟢 <b>SerkoGram</b>\n\n` +
           `Добро пожаловать!\n\n` +
           `Персональный архив Telegram-сообщений, медиа и истории изменений доступных подключённых чатов.\n\n` +
           `• Автоматическое сохранение сообщений\n` +
@@ -106,7 +106,7 @@ export async function executeCommand(msg: TgMessage, parsed: ParsedCommand): Pro
     case 'info': {
       await bot.api.sendMessage(
         chatId,
-        `🟣 <b>О сервисе SerkoGram</b>\n\n` +
+        `🟢 <b>О сервисе SerkoGram</b>\n\n` +
           `Безопасная экосистема для сохранения и организации истории сообщений.\n\n` +
           `• <b>Подключение</b>: Официальное подключение через Telegram Business\n` +
           `• <b>Приватность</b>: Ваши сообщения и медиа доступны только вам\n` +

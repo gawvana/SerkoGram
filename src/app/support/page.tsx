@@ -26,7 +26,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const STATUS_BADGES: Record<string, { label: string; className: string }> = {
-  OPEN: { label: 'Открыт', className: 'bg-sg-purple/20 text-sg-purple-light border-sg-purple/30' },
+  OPEN: { label: 'Открыт', className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' },
   IN_PROGRESS: { label: 'В работе', className: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30' },
   WAITING_USER: { label: 'Ожидает ответа', className: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
   RESOLVED: { label: 'Решён', className: 'bg-sg-success/20 text-green-300 border-sg-success/30' },
@@ -53,7 +53,7 @@ export default function SupportPage() {
         rightAction={
           <Link
             href="/support/new"
-            className="flex items-center gap-1 bg-sg-purple hover:bg-sg-purple-dark text-white text-xs px-3 py-1.5 rounded-xl font-medium transition-colors"
+            className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-xl font-medium transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Создать</span>
@@ -72,7 +72,7 @@ export default function SupportPage() {
           </div>
           <Link
             href="/support/new"
-            className="w-10 h-10 rounded-xl bg-sg-purple/20 flex items-center justify-center text-sg-purple flex-shrink-0"
+            className="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 flex-shrink-0"
           >
             <Plus className="w-5 h-5" />
           </Link>
@@ -94,7 +94,7 @@ export default function SupportPage() {
               </p>
               <Link
                 href="/support/new"
-                className="bg-sg-purple hover:bg-sg-purple-dark text-white px-5 py-2.5 rounded-xl text-xs font-semibold transition-colors"
+                className="bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-xs font-semibold transition-colors"
               >
                 Создать обращение
               </Link>
@@ -117,7 +117,7 @@ export default function SupportPage() {
                   className="block bg-sg-surface hover:bg-sg-surface-2 p-4 rounded-2xl border border-sg-border transition-colors space-y-2"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-2xs text-sg-purple font-medium uppercase tracking-wider">
+                    <span className="text-2xs text-emerald-400 font-medium uppercase tracking-wider">
                       {CATEGORY_LABELS[t.category] ?? t.category}
                     </span>
                     <span

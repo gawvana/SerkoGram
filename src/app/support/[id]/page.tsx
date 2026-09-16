@@ -87,7 +87,7 @@ export default function TicketDetailPage({
             <p className="font-semibold text-white truncate">{ticket.subject}</p>
             <p className="text-2xs text-sg-text-muted mt-0.5">Категория: {ticket.category}</p>
           </div>
-          <span className="text-2xs px-2.5 py-1 rounded-full bg-sg-purple/20 text-sg-purple-light border border-sg-purple/30 font-medium flex-shrink-0">
+          <span className="text-2xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium flex-shrink-0">
             {ticket.status}
           </span>
         </div>
@@ -130,14 +130,14 @@ export default function TicketDetailPage({
                   className={`max-w-[85%] rounded-2xl p-3.5 space-y-1 ${
                     isStaff
                       ? 'bg-sg-surface-2 text-white border border-sg-border rounded-bl-sm'
-                      : 'bg-sg-purple text-white rounded-br-sm'
+                      : 'bg-emerald-500 text-white rounded-br-sm'
                   }`}
                 >
                   <div className="flex items-center gap-1.5 text-2xs opacity-75 mb-0.5">
                     {isStaff ? (
                       <>
-                        <Headphones className="w-3 h-3 text-sg-purple-light" />
-                        <span className="font-medium text-sg-purple-light">Поддержка SerkoGram</span>
+                        <Headphones className="w-3 h-3 text-emerald-300" />
+                        <span className="font-medium text-emerald-300">Поддержка SerkoGram</span>
                       </>
                     ) : (
                       <>
@@ -170,12 +170,12 @@ export default function TicketDetailPage({
           placeholder="Напишите ответ..."
           value={replyText}
           onChange={(e) => setReplyText(e.target.value)}
-          className="flex-1 bg-sg-surface-2 rounded-xl px-4 py-2.5 text-sm text-sg-text-primary placeholder:text-sg-text-muted border border-sg-border focus:border-sg-purple focus:outline-none transition-colors"
+          className="flex-1 bg-sg-surface-2 rounded-xl px-4 py-2.5 text-sm text-sg-text-primary placeholder:text-sg-text-muted border border-sg-border focus:border-emerald-500 focus:outline-none transition-colors"
         />
         <button
           type="submit"
           disabled={!replyText.trim() || replyMutation.isPending}
-          className="p-2.5 rounded-xl bg-sg-purple hover:bg-sg-purple-dark text-white disabled:opacity-40 transition-colors flex-shrink-0"
+          className="p-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white disabled:opacity-40 transition-colors flex-shrink-0"
           aria-label="Отправить ответ"
         >
           <Send className="w-4 h-4" />

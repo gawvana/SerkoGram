@@ -30,18 +30,18 @@ export default function InstructionsPage() {
         {/* 1. Telegram Business */}
         <div className="bg-sg-surface rounded-2xl p-5 border border-sg-border space-y-3">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-sg-purple/20 flex items-center justify-center text-sg-purple">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400">
               <Building2 className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-2xs font-bold text-sg-purple uppercase tracking-wider">Шаг 1</span>
+              <span className="text-2xs font-bold text-emerald-400 uppercase tracking-wider">Шаг 1</span>
               <h3 className="text-base font-semibold text-white">Telegram Business</h3>
             </div>
           </div>
           <p className="text-xs text-sg-text-secondary leading-relaxed">
             Это официальный и безопасный способ интеграции, предоставленный Telegram для бизнес-аккаунтов.
           </p>
-          <ol className="text-xs text-sg-text-secondary space-y-2 pl-4 list-decimal marker:text-sg-purple">
+          <ol className="text-xs text-sg-text-secondary space-y-2 pl-4 list-decimal marker:text-emerald-400">
             <li>Откройте Telegram и перейдите в <b>Настройки</b>.</li>
             <li>Выберите раздел <b>Telegram Business</b> &rarr; <b>Чат-боты</b>.</li>
             <li>В строке поиска найдите нашего бота и добавьте его.</li>
@@ -49,7 +49,7 @@ export default function InstructionsPage() {
           </ol>
           <Link
             href="/connect"
-            className="inline-flex items-center gap-1.5 text-xs text-sg-purple font-medium hover:underline pt-1"
+            className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium hover:underline pt-1"
           >
             Перейти к подключению <ChevronRight className="w-3.5 h-3.5" />
           </Link>
@@ -102,11 +102,11 @@ export default function InstructionsPage() {
         {/* 4. What is saved */}
         <div className="bg-sg-surface rounded-2xl p-5 border border-sg-border space-y-3">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-sg-purple/20 flex items-center justify-center text-sg-purple">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400">
               <Archive className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-2xs font-bold text-sg-purple uppercase tracking-wider">Архивация</span>
+              <span className="text-2xs font-bold text-emerald-400 uppercase tracking-wider">Архивация</span>
               <h3 className="text-base font-semibold text-white">Что сохраняется?</h3>
             </div>
           </div>

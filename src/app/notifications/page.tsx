@@ -73,9 +73,9 @@ export default function NotificationsPage() {
       return <AlertTriangle className="w-5 h-5 text-rose-400" />;
     }
     if (type === 'COMMAND_RESULT') {
-      return <FolderArchive className="w-5 h-5 text-sg-purple" />;
+      return <FolderArchive className="w-5 h-5 text-emerald-400" />;
     }
-    return <Bell className="w-5 h-5 text-sg-purple" />;
+    return <Bell className="w-5 h-5 text-emerald-400" />;
   };
 
   const formatDate = (iso: string) => {
@@ -105,7 +105,7 @@ export default function NotificationsPage() {
             <button
               onClick={() => markAllMutation.mutate()}
               disabled={markAllMutation.isPending}
-              className="text-xs text-sg-purple hover:underline flex items-center gap-1 py-1 px-2"
+              className="text-xs text-emerald-400 hover:underline flex items-center gap-1 py-1 px-2"
               title="Отметить все как прочитанные"
             >
               <CheckCheck className="w-4 h-4" />
@@ -144,7 +144,7 @@ export default function NotificationsPage() {
                   key={item.id}
                   className={`p-3.5 rounded-xl border transition-all ${
                     isUnread
-                      ? 'bg-sg-surface-2 border-sg-purple/40 shadow-sm'
+                      ? 'bg-sg-surface-2 border-emerald-500/40 shadow-sm'
                       : 'bg-sg-surface border-sg-border opacity-85'
                   }`}
                 >
@@ -163,7 +163,7 @@ export default function NotificationsPage() {
                       </div>
 
                       {item.chatTitle && (
-                        <p className="text-xs text-sg-purple font-medium truncate">
+                        <p className="text-xs text-emerald-400 font-medium truncate">
                           Чат: {item.chatTitle}
                         </p>
                       )}
@@ -176,7 +176,7 @@ export default function NotificationsPage() {
                         <div className="pt-2">
                           <Link
                             href={`/archive/${encodeURIComponent(item.chatId)}`}
-                            className="inline-flex items-center gap-1.5 text-xs text-sg-purple hover:underline"
+                            className="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:underline"
                           >
                             <span>Открыть в архиве</span>
                             <ExternalLink className="w-3 h-3" />

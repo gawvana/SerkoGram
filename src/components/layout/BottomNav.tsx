@@ -39,18 +39,18 @@ export function BottomNav() {
                 tab.isCenter ? 'relative' : ''
               } ${
                 isActive
-                  ? 'text-sg-purple font-medium'
+                  ? 'text-emerald-400 font-medium'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               <div
                 className={`flex items-center justify-center w-8 h-8 rounded-xl transition-all duration-200 ${
                   tab.isCenter && isActive
-                    ? 'bg-sg-purple/20 text-sg-purple shadow-[0_0_16px_rgba(139,92,246,0.3)] border border-sg-purple/30'
+                    ? 'bg-emerald-500/15 text-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.25)] border border-emerald-500/30'
                     : tab.isCenter
-                    ? 'bg-white/[0.05] text-zinc-300 border border-white/[0.06] group-hover:bg-white/[0.08] group-hover:text-sg-purple'
+                    ? 'bg-white/[0.05] text-zinc-300 border border-white/[0.06] group-hover:bg-white/[0.08] group-hover:text-emerald-400'
                     : isActive
-                    ? 'text-sg-purple'
+                    ? 'text-emerald-400'
                     : 'group-hover:text-zinc-200'
                 }`}
               >
@@ -62,7 +62,7 @@ export function BottomNav() {
               </div>
               <span
                 className={`text-[10px] tracking-tight mt-0.5 leading-none transition-colors ${
-                  isActive ? 'font-medium text-sg-purple' : 'text-zinc-400'
+                  isActive ? 'font-medium text-emerald-400' : 'text-zinc-400'
                 }`}
               >
                 {tab.name}

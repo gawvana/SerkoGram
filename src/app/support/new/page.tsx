@@ -82,7 +82,7 @@ export default function NewTicketPage() {
                 onClick={() => setCategory(cat.key)}
                 className={`py-2 px-3 rounded-xl text-xs font-medium text-left border transition-all ${
                   category === cat.key
-                    ? 'bg-sg-purple/20 border-sg-purple text-white'
+                    ? 'bg-emerald-500/15 border-emerald-500 text-white'
                     : 'bg-sg-surface border-sg-border text-sg-text-secondary hover:bg-sg-surface-2'
                 }`}
               >
@@ -100,7 +100,7 @@ export default function NewTicketPage() {
             placeholder="Кратко опишите суть вопроса"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            className="w-full bg-sg-surface rounded-xl px-4 py-2.5 text-sm text-sg-text-primary placeholder:text-sg-text-muted border border-sg-border focus:border-sg-purple focus:outline-none transition-colors"
+            className="w-full bg-sg-surface rounded-xl px-4 py-2.5 text-sm text-sg-text-primary placeholder:text-sg-text-muted border border-sg-border focus:border-emerald-500 focus:outline-none transition-colors"
           />
         </div>
 
@@ -112,7 +112,7 @@ export default function NewTicketPage() {
             placeholder="Подробно расскажите, что произошло..."
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            className="w-full bg-sg-surface rounded-xl px-4 py-2.5 text-sm text-sg-text-primary placeholder:text-sg-text-muted border border-sg-border focus:border-sg-purple focus:outline-none transition-colors resize-none"
+            className="w-full bg-sg-surface rounded-xl px-4 py-2.5 text-sm text-sg-text-primary placeholder:text-sg-text-muted border border-sg-border focus:border-emerald-500 focus:outline-none transition-colors resize-none"
           />
         </div>
 
@@ -120,7 +120,7 @@ export default function NewTicketPage() {
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="w-full flex items-center justify-center gap-2 bg-sg-purple hover:bg-sg-purple-dark text-white font-medium py-3 rounded-xl text-sm transition-colors disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-3 rounded-xl text-sm transition-colors disabled:opacity-50"
         >
           <Send className="w-4 h-4" />
           <span>{mutation.isPending ? 'Отправка...' : 'Отправить обращение'}</span>

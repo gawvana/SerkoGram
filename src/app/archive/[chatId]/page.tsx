@@ -75,7 +75,7 @@ export default function ChatDetailPage({ params }: { params: Promise<{ chatId: s
           onClick={() => setActiveFilter('all')}
           className={`px-3 py-1 rounded-full whitespace-nowrap transition-colors ${
             activeFilter === 'all'
-              ? 'bg-sg-purple text-white'
+              ? 'bg-emerald-500 text-white'
               : 'bg-sg-surface-2 text-sg-text-secondary hover:bg-sg-surface-3'
           }`}
         >
@@ -100,7 +100,7 @@ export default function ChatDetailPage({ params }: { params: Promise<{ chatId: s
           onClick={() => setActiveFilter('edited')}
           className={`px-3 py-1 rounded-full whitespace-nowrap flex items-center gap-1 transition-colors ${
             activeFilter === 'edited'
-              ? 'bg-sg-purple text-white'
+              ? 'bg-emerald-500 text-white'
               : 'bg-sg-surface-2 text-sg-text-secondary hover:bg-sg-surface-3'
           }`}
         >
@@ -113,7 +113,7 @@ export default function ChatDetailPage({ params }: { params: Promise<{ chatId: s
           onClick={() => setActiveFilter('photo')}
           className={`px-3 py-1 rounded-full whitespace-nowrap flex items-center gap-1 transition-colors ${
             activeFilter === 'photo'
-              ? 'bg-sg-purple text-white'
+              ? 'bg-emerald-500 text-white'
               : 'bg-sg-surface-2 text-sg-text-secondary hover:bg-sg-surface-3'
           }`}
         >

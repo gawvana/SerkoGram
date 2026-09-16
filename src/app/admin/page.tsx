@@ -146,8 +146,8 @@ export default function AdminDashboardPage() {
       <div className="p-4 space-y-4">
         {/* Toast */}
         {toast && (
-          <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-sg-surface border border-sg-purple text-white px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-lg animate-fade-in">
-            <CheckCircle2 className="w-3.5 h-3.5 text-sg-purple" />
+          <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-sg-surface border border-emerald-500 text-white px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-lg animate-fade-in">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
             <span>{toast}</span>
           </div>
         )}
@@ -173,13 +173,13 @@ export default function AdminDashboardPage() {
         {/* Stats Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
           <StatBox
-            icon={<Users className="w-4 h-4 text-sg-purple" />}
+            icon={<Users className="w-4 h-4 text-emerald-400" />}
             label="Пользователи"
             value={stats?.totalUsers}
             loading={statsLoading}
           />
           <StatBox
-            icon={<MessageSquare className="w-4 h-4 text-sg-purple" />}
+            icon={<MessageSquare className="w-4 h-4 text-emerald-400" />}
             label="Сообщения"
             value={stats?.totalMessages}
             loading={statsLoading}
@@ -191,7 +191,7 @@ export default function AdminDashboardPage() {
             loading={statsLoading}
           />
           <StatBox
-            icon={<ImageIcon className="w-4 h-4 text-sg-purple" />}
+            icon={<ImageIcon className="w-4 h-4 text-emerald-400" />}
             label="Медиафайлы"
             value={stats?.totalMedia}
             loading={statsLoading}
@@ -203,7 +203,7 @@ export default function AdminDashboardPage() {
             loading={statsLoading}
           />
           <StatBox
-            icon={<ShieldAlert className="w-4 h-4 text-sg-purple" />}
+            icon={<ShieldAlert className="w-4 h-4 text-emerald-400" />}
             label="Аудит-логи"
             value={stats?.recentAuditLogs}
             loading={statsLoading}
@@ -217,7 +217,7 @@ export default function AdminDashboardPage() {
             onClick={() => setActiveTab('tickets')}
             className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
               activeTab === 'tickets'
-                ? 'bg-sg-purple text-white'
+                ? 'bg-emerald-500 text-white'
                 : 'text-sg-text-secondary hover:text-white'
             }`}
           >
@@ -228,7 +228,7 @@ export default function AdminDashboardPage() {
             onClick={() => setActiveTab('users')}
             className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
               activeTab === 'users'
-                ? 'bg-sg-purple text-white'
+                ? 'bg-emerald-500 text-white'
                 : 'text-sg-text-secondary hover:text-white'
             }`}
           >
@@ -239,7 +239,7 @@ export default function AdminDashboardPage() {
             onClick={() => setActiveTab('audit')}
             className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
               activeTab === 'audit'
-                ? 'bg-sg-purple text-white'
+                ? 'bg-emerald-500 text-white'
                 : 'text-sg-text-secondary hover:text-white'
             }`}
           >
@@ -296,10 +296,10 @@ export default function AdminDashboardPage() {
                     </div>
 
                     <div className="flex justify-between items-center text-2xs pt-1 border-t border-sg-border/40">
-                      <span className="text-sg-purple">{t.category}</span>
+                      <span className="text-emerald-400">{t.category}</span>
                       <Link
                         href={`/support/${t.id}`}
-                        className="text-sg-purple-light hover:underline font-medium"
+                        className="text-emerald-300 hover:underline font-medium"
                       >
                         Открыть диалог &rarr;
                       </Link>
@@ -340,7 +340,7 @@ export default function AdminDashboardPage() {
                       <p className="text-xs font-medium text-white">
                         {u.firstName} {u.lastName ?? ''}
                         {u.isAdmin && (
-                          <span className="ml-1.5 px-1.5 py-0.5 rounded bg-sg-purple/20 text-sg-purple-light text-[10px]">
+                          <span className="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[10px]">
                             Admin
                           </span>
                         )}
@@ -385,7 +385,7 @@ export default function AdminDashboardPage() {
                     className="p-2.5 bg-sg-surface rounded-xl border border-sg-border text-xs flex items-center justify-between"
                   >
                     <div>
-                      <span className="font-mono text-2xs text-sg-purple-light font-medium">
+                      <span className="font-mono text-2xs text-emerald-300 font-medium">
                         {log.action}
                       </span>
                       <p className="text-[11px] text-sg-text-muted">

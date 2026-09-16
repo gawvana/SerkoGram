@@ -123,7 +123,7 @@ export default function CommandsPage() {
             onClick={() => setSelectedPrefix('all')}
             className={`flex-1 py-1.5 rounded-lg text-center transition-all ${
               selectedPrefix === 'all'
-                ? 'bg-sg-purple text-white shadow-sm font-semibold'
+                ? 'bg-emerald-500 text-white shadow-sm font-semibold'
                 : 'text-sg-text-secondary hover:text-sg-text-primary'
             }`}
           >
@@ -134,7 +134,7 @@ export default function CommandsPage() {
             onClick={() => setSelectedPrefix('.')}
             className={`flex-1 py-1.5 rounded-lg text-center transition-all ${
               selectedPrefix === '.'
-                ? 'bg-sg-purple text-white shadow-sm font-semibold'
+                ? 'bg-emerald-500 text-white shadow-sm font-semibold'
                 : 'text-sg-text-secondary hover:text-sg-text-primary'
             }`}
           >
@@ -145,7 +145,7 @@ export default function CommandsPage() {
             onClick={() => setSelectedPrefix('/')}
             className={`flex-1 py-1.5 rounded-lg text-center transition-all ${
               selectedPrefix === '/'
-                ? 'bg-sg-purple text-white shadow-sm font-semibold'
+                ? 'bg-emerald-500 text-white shadow-sm font-semibold'
                 : 'text-sg-text-secondary hover:text-sg-text-primary'
             }`}
           >
@@ -161,7 +161,7 @@ export default function CommandsPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Поиск по командам или описанию..."
-            className="w-full bg-sg-surface border border-sg-border/60 rounded-xl pl-9 pr-9 py-2.5 text-sm text-sg-text-primary placeholder:text-sg-text-muted focus:outline-none focus:border-sg-purple transition-colors"
+            className="w-full bg-sg-surface border border-sg-border/60 rounded-xl pl-9 pr-9 py-2.5 text-sm text-sg-text-primary placeholder:text-sg-text-muted focus:outline-none focus:border-emerald-500 transition-colors"
           />
           {searchQuery && (
             <button
@@ -180,7 +180,7 @@ export default function CommandsPage() {
             onClick={() => setSelectedCategory('all')}
             className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all ${
               selectedCategory === 'all'
-                ? 'bg-sg-purple text-white font-medium shadow-sm'
+                ? 'bg-emerald-500 text-white font-medium shadow-sm'
                 : 'bg-sg-surface border border-sg-border/40 text-sg-text-secondary hover:text-sg-text-primary'
             }`}
           >
@@ -201,7 +201,7 @@ export default function CommandsPage() {
                 onClick={() => setSelectedCategory(cat.id)}
                 className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all flex items-center gap-1.5 ${
                   isSelected
-                    ? 'bg-sg-purple text-white font-medium shadow-sm'
+                    ? 'bg-emerald-500 text-white font-medium shadow-sm'
                     : 'bg-sg-surface border border-sg-border/40 text-sg-text-secondary hover:text-sg-text-primary'
                 }`}
               >
@@ -237,12 +237,12 @@ export default function CommandsPage() {
                   className="w-full text-left px-3.5 py-3 flex items-center justify-between hover:bg-sg-surface-2 transition-colors active:bg-sg-surface-3 group"
                 >
                   <div className="flex items-center gap-3 min-w-0 pr-2">
-                    <div className="w-8 h-8 rounded-lg bg-sg-surface-2 flex items-center justify-center text-sg-purple shrink-0 group-hover:scale-105 transition-transform">
+                    <div className="w-8 h-8 rounded-lg bg-sg-surface-2 flex items-center justify-center text-emerald-400 shrink-0 group-hover:scale-105 transition-transform">
                       <Icon className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-bold text-sg-purple bg-sg-purple/10 px-1.5 py-0.5 rounded">
+                        <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
                           {prefixLabel}
                         </span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-sg-surface-2 text-sg-text-muted">
@@ -288,7 +288,7 @@ export default function CommandsPage() {
             <div className="flex items-start justify-between">
               <div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-mono font-bold text-sg-purple bg-sg-purple/15 px-2 py-0.5 rounded-md">
+                  <span className="text-sm font-mono font-bold text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-md">
                     {activeCommand.prefix === '.' ? `.${activeCommand.command}` : activeCommand.prefix === '/' ? `/${activeCommand.command}` : `.${activeCommand.command}`}
                   </span>
                   <span className="text-[11px] px-2 py-0.5 rounded bg-sg-surface-2 text-sg-text-secondary font-medium">
@@ -327,7 +327,7 @@ export default function CommandsPage() {
                 </code>
                 <button
                   onClick={() => handleCopyUsage(activeCommand.usage)}
-                  className="p-1 text-sg-text-muted hover:text-sg-purple transition-colors"
+                  className="p-1 text-sg-text-muted hover:text-emerald-400 transition-colors"
                   title="Копировать команду"
                   aria-label="Копировать команду"
                 >
@@ -389,7 +389,7 @@ export default function CommandsPage() {
               {activeCommand.enabled && activeCommand.uiRoute ? (
                 <Link
                   href={activeCommand.uiRoute}
-                  className="flex-1 bg-sg-purple hover:bg-sg-purple-dark text-white text-xs font-semibold py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-sm"
                 >
                   <span>Открыть раздел</span>
                   <ExternalLink className="w-3.5 h-3.5" />

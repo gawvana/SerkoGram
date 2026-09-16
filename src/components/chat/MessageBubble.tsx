@@ -72,7 +72,7 @@ export function MessageBubble({ msg }: MessageBubbleProps) {
           isDeleted
             ? 'bg-red-500/[0.08] backdrop-blur-md border border-red-500/25 text-zinc-100 rounded-bl-sm shadow-sm'
             : isOut
-            ? 'bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] text-white rounded-br-sm shadow-[0_2px_12px_rgba(139,92,246,0.25)] border border-white/20'
+            ? 'bg-gradient-to-br from-[#065f46] to-[#047857] text-white rounded-br-sm shadow-[0_2px_12px_rgba(16,185,129,0.2)] border border-emerald-400/20'
             : 'bg-[#18181d]/85 backdrop-blur-md text-zinc-100 border border-white/[0.08] rounded-bl-sm shadow-sm'
         }`}
       >
@@ -87,14 +87,14 @@ export function MessageBubble({ msg }: MessageBubbleProps) {
 
         {/* Sender name for incoming messages */}
         {!isOut && msg.senderName && !isDeleted && (
-          <div className="text-xs font-medium text-sg-purple-light mb-1 select-none">
+          <div className="text-xs font-medium text-emerald-300 mb-1 select-none">
             {msg.senderName}
           </div>
         )}
 
         {/* Forward origin */}
         {msg.forwardFromName && (
-          <div className="text-2xs text-sg-text-muted mb-1 border-l-2 border-sg-purple pl-1.5">
+          <div className="text-2xs text-sg-text-muted mb-1 border-l-2 border-emerald-500 pl-1.5">
             Переслано от <span className="text-white font-medium">{msg.forwardFromName}</span>
           </div>
         )}
@@ -193,7 +193,7 @@ export function MessageBubble({ msg }: MessageBubbleProps) {
             <button
               type="button"
               onClick={handleFetchVersions}
-              className="flex items-center gap-0.5 text-[10px] text-sg-purple-light hover:underline mr-1"
+              className="flex items-center gap-0.5 text-[10px] text-emerald-300 hover:underline mr-1"
               title="Посмотреть историю изменений"
             >
               <Pencil className="w-2.5 h-2.5" />

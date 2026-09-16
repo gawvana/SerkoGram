@@ -7,10 +7,12 @@
    ============================================================ */
 
 :root {
-  --sg-bg: #0a0a0a;
-  --sg-surface: #111111;
-  --sg-surface-2: #1a1a1a;
-  --sg-purple: #8b5cf6;
+  --sg-bg: #09090b;
+  --sg-surface: #111114;
+  --sg-surface-2: #18181b;
+  --sg-emerald: #10b981;
+  --sg-emerald-glow: rgba(16, 185, 129, 0.15);
+  --sg-purple: #10b981;
 }
 
 /* Smooth scrolling */
@@ -41,21 +43,21 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(16, 185, 129, 0.3);
 }
 
 /* Telegram theme integration */
 body.tg-theme {
-  --tg-bg: var(--tg-theme-bg-color, #0a0a0a);
+  --tg-bg: var(--tg-theme-bg-color, #09090b);
   --tg-text: var(--tg-theme-text-color, #ffffff);
   --tg-hint: var(--tg-theme-hint-color, #a1a1aa);
-  --tg-link: var(--tg-theme-link-color, #8b5cf6);
-  --tg-button: var(--tg-theme-button-color, #8b5cf6);
+  --tg-link: var(--tg-theme-link-color, #10b981);
+  --tg-button: var(--tg-theme-button-color, #10b981);
   --tg-button-text: var(--tg-theme-button-text-color, #ffffff);
 }
 
@@ -89,7 +91,7 @@ body.tg-theme {
 
 /* Focus ring */
 :focus-visible {
-  outline: 2px solid var(--sg-purple);
+  outline: 2px solid var(--sg-emerald);
   outline-offset: 2px;
 }
 
@@ -109,16 +111,31 @@ select {
   border-radius: 0;
 }
 
-/* Glassmorphism utility */
+/* Liquid Glass 2.0 utility */
 @layer utilities {
+  .liquid-glass {
+    background: rgba(18, 18, 20, 0.72);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .liquid-glass-emerald {
+    background: rgba(18, 18, 20, 0.72);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.08);
+  }
+
   .glass {
-    background: rgba(17, 17, 17, 0.8);
+    background: rgba(17, 17, 20, 0.8);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
   }
 
   .glass-strong {
-    background: rgba(17, 17, 17, 0.95);
+    background: rgba(17, 17, 20, 0.95);
     backdrop-filter: blur(40px);
     -webkit-backdrop-filter: blur(40px);
   }

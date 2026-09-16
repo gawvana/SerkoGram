@@ -109,7 +109,7 @@ export default function FAQPage() {
                   </span>
                   <ChevronDown
                     className={`w-4 h-4 text-sg-text-muted flex-shrink-0 transition-transform duration-200 ${
-                      isOpen ? 'rotate-180 text-sg-purple' : ''
+                      isOpen ? 'rotate-180 text-emerald-400' : ''
                     }`}
                   />
                 </button>

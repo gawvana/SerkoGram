@@ -116,7 +116,7 @@ export default function DashboardPage() {
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 sticky top-0 z-10 glass-strong">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-sg-purple flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center">
             <span className="text-white text-sm font-bold">S</span>
           </div>
           <h1 className="text-lg font-semibold text-sg-text-primary">SerkoGram</h1>
@@ -131,8 +131,8 @@ export default function DashboardPage() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-sg-surface border border-sg-purple text-white px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-lg animate-fade-in">
-          <CheckCircle2 className="w-3.5 h-3.5 text-sg-purple" />
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-sg-surface border border-emerald-500 text-white px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-lg animate-fade-in">
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
           <span>{toast}</span>
         </div>
       )}
@@ -211,7 +211,7 @@ export default function DashboardPage() {
         {/* Navigation links */}
         <div className="bg-sg-surface rounded-2xl border border-sg-border divide-y divide-sg-border">
           <NavRow href="/archive?filter=deleted" icon={<Trash2 className="w-5 h-5 text-sg-error" />} label="Удалённые сообщения" />
-          <NavRow href="/settings" icon={<Shield className="w-5 h-5 text-sg-purple" />} label="Приватность" />
+          <NavRow href="/settings" icon={<Shield className="w-5 h-5 text-emerald-400" />} label="Приватность" />
           <NavRow href="/archive" icon={<MessageSquare className="w-5 h-5 text-sg-text-secondary" />} label="Чаты" />
           <NavRow href="/faq" icon={<HelpCircle className="w-5 h-5 text-sg-text-secondary" />} label="FAQ" />
         </div>
@@ -283,7 +283,7 @@ function ToggleRow({
           aria-label={label}
           onClick={onChange}
           className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
-            checked ? 'bg-sg-purple' : 'bg-sg-surface-3'
+            checked ? 'bg-emerald-500' : 'bg-sg-surface-3'
           }`}
         >
           <span

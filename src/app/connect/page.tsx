@@ -27,7 +27,7 @@ export default function ConnectPage() {
       <div className="flex-1 px-4 space-y-4 animate-fade-in">
         {/* Logo */}
         <div className="flex flex-col items-center py-6">
-          <div className="w-16 h-16 rounded-2xl bg-sg-purple flex items-center justify-center mb-3">
+          <div className="w-16 h-16 rounded-2xl bg-emerald-500 flex items-center justify-center mb-3">
             <span className="text-3xl font-bold text-white">S</span>
           </div>
           <h2 className="text-xl font-semibold text-sg-text-primary">SerkoGram</h2>
@@ -37,8 +37,8 @@ export default function ConnectPage() {
         {/* Business Connection */}
         <div className="bg-sg-surface rounded-2xl p-5 border border-sg-border">
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-sg-purple-glow flex items-center justify-center flex-shrink-0">
-              <Building2 className="w-5 h-5 text-sg-purple" />
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+              <Building2 className="w-5 h-5 text-emerald-400" />
             </div>
             <div className="flex-1">
               <h3 className="text-base font-medium text-sg-text-primary">
@@ -56,30 +56,30 @@ export default function ConnectPage() {
               </div>
 
               <div className="mt-4 space-y-2">
-                <p className="text-xs font-medium text-sg-purple">Пошаговое подключение (6 шагов):</p>
+                <p className="text-xs font-medium text-emerald-400">Пошаговое подключение (6 шагов):</p>
                 <ol className="text-xs text-sg-text-secondary space-y-2">
                   <li className="flex gap-2">
-                    <span className="text-sg-purple font-bold">1.</span>
+                    <span className="text-emerald-400 font-bold">1.</span>
                     Откройте Telegram → Настройки
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-sg-purple font-bold">2.</span>
+                    <span className="text-emerald-400 font-bold">2.</span>
                     Выберите «Telegram Business» → «Чат-боты»
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-sg-purple font-bold">3.</span>
-                    Найдите бота <code className="text-sg-purple">@SerkoGram_bot</code>
+                    <span className="text-emerald-400 font-bold">3.</span>
+                    Найдите бота <code className="text-emerald-400">@SerkoGram_bot</code>
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-sg-purple font-bold">4.</span>
+                    <span className="text-emerald-400 font-bold">4.</span>
                     Включите доступ к управлению чатами
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-sg-purple font-bold">5.</span>
+                    <span className="text-emerald-400 font-bold">5.</span>
                     <span><b>ОБЯЗАТЕЛЬНО</b> включите пункт <i>«Отвечать на сообщения»</i> (can_reply)</span>
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-sg-purple font-bold">6.</span>
+                    <span className="text-emerald-400 font-bold">6.</span>
                     Выберите чаты («Все личные чаты») и нажмите «Готово»
                   </li>
                 </ol>
@@ -89,7 +89,7 @@ export default function ConnectPage() {
                 href="https://t.me/SerkoGram_bot"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-sg-purple text-white text-sm font-medium hover:bg-sg-purple-dark transition-colors"
+                className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-medium hover:bg-emerald-600 transition-colors"
               >
                 Открыть @SerkoGram_bot
                 <ExternalLink className="w-3.5 h-3.5" />
