@@ -7,6 +7,7 @@
 
 import { prisma } from '@/lib/db';
 import { getBot } from '@/lib/telegram/bot';
+import { t, SupportedLanguage, DEFAULT_LANGUAGE } from '@/lib/i18n';
 import type { NotificationType, NotificationStatus, OwnerNotification } from '@prisma/client';
 
 export interface NotifyOwnerPayload {
@@ -15,6 +16,8 @@ export interface NotifyOwnerPayload {
   type: NotificationType;
   title: string;
   text: string;
+  connectionId?: string;
+  dedupeKey?: string;
   chatId?: string;
   chatTitle?: string;
   messageId?: number;
@@ -37,6 +40,14 @@ const CRITICAL_PRIVATE_TYPES: NotificationType[] = [
   'MEDIA_SAVED',
   'EPHEMERAL_SAVED',
   'ARCHIVE_FAILURE',
+  'MESSAGE_DELETED',
+  'MESSAGE_EDITED',
+  'ACCOUNT_CONNECTED',
+  'ACCOUNT_DISCONNECTED',
+  'PERMISSION_CHANGED',
+  'ARCHIVE_UPDATED',
+  'AUTOMATION_ERROR',
+  'TIMER_COMPLETED',
 ];
 
 /**
@@ -83,6 +94,8 @@ class OwnerNotificationService {
       type,
       title,
       text,
+      connectionId,
+      dedupeKey,
       chatId,
       chatTitle,
       messageId,
@@ -99,13 +112,34 @@ class OwnerNotificationService {
 
     const ownerTgBigInt = BigInt(telegramUserId.toString());
 
-    // 2. Persist in database
+    // 2. Check for duplicate notification if dedupeKey is provided
+    if (dedupeKey) {
+      try {
+        const existing = await prisma.ownerNotification.findUnique({
+          where: { dedupeKey },
+        });
+        if (existing) {
+          return {
+            success: true,
+            status: existing.status,
+            notificationId: existing.id,
+            deliveredViaTelegram: existing.status === 'SENT',
+          };
+        }
+      } catch (dedupeErr: any) {
+        console.warn('[OwnerNotification] Dedupe check note:', dedupeErr?.message);
+      }
+    }
+
+    // 3. Persist in database
     let record: any = null;
     try {
       record = await prisma.ownerNotification.create({
         data: {
           userId,
           telegramUserId: ownerTgBigInt,
+          connectionId: connectionId ?? null,
+          dedupeKey: dedupeKey ?? null,
           type,
           title,
           text,
@@ -119,7 +153,15 @@ class OwnerNotificationService {
         },
       });
     } catch (dbErr: any) {
-      console.warn('[OwnerNotification] Failed to create database record, continuing with direct notify:', dbErr?.message);
+      if (dbErr?.code === 'P2002') {
+        // Unique constraint on dedupeKey hit: idempotent duplicate
+        return {
+          success: true,
+          status: 'SENT',
+          deliveredViaTelegram: true,
+        };
+      }
+      console.warn('[OwnerNotification] Failed to create database record:', dbErr?.message);
     }
 
     // 3. Attempt direct private message from @SerkoGram_bot to owner
@@ -289,6 +331,160 @@ class OwnerNotificationService {
       text: params.text,
       chatId: params.chatId,
       chatTitle: params.chatTitle,
+    });
+  }
+
+  /**
+   * Helper for notifying account connection.
+   */
+  async notifyAccountConnected(params: {
+    userId: string;
+    telegramUserId: string | number | bigint;
+    connectionId: string;
+    dedupeKey?: string;
+    lang?: SupportedLanguage;
+  }): Promise<OwnerNotificationResult> {
+    const lang = params.lang || DEFAULT_LANGUAGE;
+    return this.notifyOwner({
+      userId: params.userId,
+      telegramUserId: params.telegramUserId,
+      connectionId: params.connectionId,
+      dedupeKey: params.dedupeKey,
+      type: 'ACCOUNT_CONNECTED',
+      title: t('notify.accountConnected.title', lang),
+      text: t('notify.accountConnected.text', lang),
+    });
+  }
+
+  /**
+   * Helper for notifying account disconnection.
+   */
+  async notifyAccountDisconnected(params: {
+    userId: string;
+    telegramUserId: string | number | bigint;
+    connectionId: string;
+    dedupeKey?: string;
+    lang?: SupportedLanguage;
+  }): Promise<OwnerNotificationResult> {
+    const lang = params.lang || DEFAULT_LANGUAGE;
+    return this.notifyOwner({
+      userId: params.userId,
+      telegramUserId: params.telegramUserId,
+      connectionId: params.connectionId,
+      dedupeKey: params.dedupeKey,
+      type: 'ACCOUNT_DISCONNECTED',
+      title: t('notify.accountDisconnected.title', lang),
+      text: t('notify.accountDisconnected.text', lang),
+    });
+  }
+
+  /**
+   * Helper for notifying permission changes.
+   */
+  async notifyPermissionChanged(params: {
+    userId: string;
+    telegramUserId: string | number | bigint;
+    connectionId: string;
+    dedupeKey?: string;
+    details?: string;
+    lang?: SupportedLanguage;
+  }): Promise<OwnerNotificationResult> {
+    const lang = params.lang || DEFAULT_LANGUAGE;
+    return this.notifyOwner({
+      userId: params.userId,
+      telegramUserId: params.telegramUserId,
+      connectionId: params.connectionId,
+      dedupeKey: params.dedupeKey,
+      type: 'PERMISSION_CHANGED',
+      title: t('notify.permissionChanged.title', lang),
+      text: params.details || t('notify.permissionChanged.text', lang),
+    });
+  }
+
+  /**
+   * Helper for notifying message edits.
+   */
+  async notifyMessageEdited(params: {
+    userId: string;
+    telegramUserId: string | number | bigint;
+    chatId: string;
+    chatTitle?: string;
+    messageId: number;
+    previewText?: string;
+    dedupeKey?: string;
+    lang?: SupportedLanguage;
+  }): Promise<OwnerNotificationResult> {
+    const lang = params.lang || DEFAULT_LANGUAGE;
+    return this.notifyOwner({
+      userId: params.userId,
+      telegramUserId: params.telegramUserId,
+      chatId: params.chatId,
+      chatTitle: params.chatTitle,
+      messageId: params.messageId,
+      dedupeKey: params.dedupeKey,
+      type: 'MESSAGE_EDITED',
+      title: t('notify.messageEdited.title', lang),
+      text: params.previewText
+        ? `${t('notify.messageEdited.text', lang)}\n\n«${escapeHtml(params.previewText.slice(0, 100))}»`
+        : t('notify.messageEdited.text', lang),
+    });
+  }
+
+  /**
+   * Helper for notifying message deletions (supports single or aggregated).
+   */
+  async notifyMessageDeleted(params: {
+    userId: string;
+    telegramUserId: string | number | bigint;
+    chatId: string;
+    chatTitle?: string;
+    messageIds: number[];
+    dedupeKey?: string;
+    lang?: SupportedLanguage;
+  }): Promise<OwnerNotificationResult> {
+    const lang = params.lang || DEFAULT_LANGUAGE;
+    const count = params.messageIds.length;
+    const isMultiple = count > 1;
+
+    return this.notifyOwner({
+      userId: params.userId,
+      telegramUserId: params.telegramUserId,
+      chatId: params.chatId,
+      chatTitle: params.chatTitle,
+      messageId: params.messageIds[0],
+      dedupeKey: params.dedupeKey,
+      type: 'MESSAGE_DELETED',
+      title: isMultiple
+        ? t('notify.messagesDeleted.title', lang)
+        : t('notify.messageDeleted.title', lang),
+      text: isMultiple
+        ? t('notify.messagesDeleted.text', lang, { count })
+        : t('notify.messageDeleted.text', lang),
+    });
+  }
+
+  /**
+   * Helper for notifying timer completion.
+   */
+  async notifyTimerCompleted(params: {
+    userId: string;
+    telegramUserId: string | number | bigint;
+    chatId?: string;
+    chatTitle?: string;
+    seconds: number;
+    dedupeKey?: string;
+    lang?: SupportedLanguage;
+  }): Promise<OwnerNotificationResult> {
+    const lang = params.lang || DEFAULT_LANGUAGE;
+    return this.notifyOwner({
+      userId: params.userId,
+      telegramUserId: params.telegramUserId,
+      chatId: params.chatId,
+      chatTitle: params.chatTitle,
+      dedupeKey: params.dedupeKey,
+      type: 'TIMER_COMPLETED',
+      title: t('notify.timerCompleted.title', lang),
+      text: t('notify.timerCompleted.text', lang, { seconds: params.seconds }),
     });
   }
 

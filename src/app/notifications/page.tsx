@@ -11,6 +11,11 @@ import {
   AlertTriangle,
   FolderArchive,
   ExternalLink,
+  PowerOff,
+  ShieldAlert,
+  Edit3,
+  Trash2,
+  Clock,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -66,10 +71,25 @@ export default function NotificationsPage() {
     if (isEphemeral || type === 'EPHEMERAL_SAVED') {
       return <Flame className="w-5 h-5 text-amber-400" />;
     }
-    if (type === 'ARCHIVE_SUCCESS' || type === 'MEDIA_SAVED') {
+    if (type === 'ACCOUNT_CONNECTED' || type === 'ARCHIVE_SUCCESS' || type === 'MEDIA_SAVED') {
       return <CheckCircle2 className="w-5 h-5 text-emerald-400" />;
     }
-    if (type === 'ARCHIVE_FAILURE') {
+    if (type === 'ACCOUNT_DISCONNECTED') {
+      return <PowerOff className="w-5 h-5 text-rose-400" />;
+    }
+    if (type === 'PERMISSION_CHANGED') {
+      return <ShieldAlert className="w-5 h-5 text-amber-400" />;
+    }
+    if (type === 'MESSAGE_EDITED') {
+      return <Edit3 className="w-5 h-5 text-cyan-400" />;
+    }
+    if (type === 'MESSAGE_DELETED') {
+      return <Trash2 className="w-5 h-5 text-rose-400" />;
+    }
+    if (type === 'TIMER_COMPLETED') {
+      return <Clock className="w-5 h-5 text-emerald-400" />;
+    }
+    if (type === 'ARCHIVE_FAILURE' || type === 'AUTOMATION_ERROR') {
       return <AlertTriangle className="w-5 h-5 text-rose-400" />;
     }
     if (type === 'COMMAND_RESULT') {

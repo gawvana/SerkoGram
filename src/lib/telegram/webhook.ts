@@ -20,6 +20,8 @@ import { resolveCommandContext } from '@/lib/commands/context';
 import { executeDotCommand } from '@/lib/commands/executor';
 import { jobService } from '@/lib/services/job-service';
 import { detectEphemeralAttributes } from '@/lib/services/ephemeral-service';
+import { ownerNotificationService } from '@/lib/services/owner-notification-service';
+import { resolveLanguage } from '@/lib/i18n';
 import { renderTttKeyboard, handleTttStep, handleRpsGame } from './games';
 import type { MessageType } from '@prisma/client';
 
@@ -108,9 +110,16 @@ async function handleBusinessConnection(update: Update): Promise<void> {
 
   const canReply = Boolean((bc as any).can_reply ?? (bc as any).rights?.can_reply ?? false);
 
+  const existingConn = await prisma.businessConnection.findUnique({
+    where: { telegramConnectionId: bc.id },
+  });
+
   if (bc.is_enabled) {
+    const isNewOrReconnected = !existingConn || existingConn.status !== 'ACTIVE' || !existingConn.isEnabled;
+    const permissionsChanged = existingConn && existingConn.status === 'ACTIVE' && existingConn.canReply !== canReply;
+
     // Connect or reconnect
-    await prisma.businessConnection.upsert({
+    const savedConn = await prisma.businessConnection.upsert({
       where: { telegramConnectionId: bc.id },
       create: {
         userId: user.id,
@@ -147,8 +156,32 @@ async function handleBusinessConnection(update: Update): Promise<void> {
       date: bc.date,
       telegramConnectionId: bc.id,
     });
+
+    // Deliver private notification to owner
+    const userLang = resolveLanguage(user.languageCode);
+    if (isNewOrReconnected) {
+      await ownerNotificationService.notifyAccountConnected({
+        userId: user.id,
+        telegramUserId: bc.user.id,
+        connectionId: savedConn.id,
+        dedupeKey: `conn_${bc.id}_${bc.date}`,
+        lang: userLang,
+      }).catch((e) => console.warn('[Webhook] notifyAccountConnected note:', e?.message));
+    } else if (permissionsChanged) {
+      await ownerNotificationService.notifyPermissionChanged({
+        userId: user.id,
+        telegramUserId: bc.user.id,
+        connectionId: savedConn.id,
+        dedupeKey: `perm_${bc.id}_${bc.date}`,
+        details: canReply
+          ? 'Включено право ответа на сообщения (can_reply).'
+          : 'Право ответа на сообщения отключено (can_reply = false).',
+        lang: userLang,
+      }).catch((e) => console.warn('[Webhook] notifyPermissionChanged note:', e?.message));
+    }
   } else {
     // Disconnect
+    const targetConnId = existingConn?.id || bc.id;
     await prisma.businessConnection.updateMany({
       where: { telegramConnectionId: bc.id },
       data: {
@@ -162,6 +195,14 @@ async function handleBusinessConnection(update: Update): Promise<void> {
       date: bc.date,
       telegramConnectionId: bc.id,
     });
+
+    await ownerNotificationService.notifyAccountDisconnected({
+      userId: user.id,
+      telegramUserId: bc.user.id,
+      connectionId: targetConnId,
+      dedupeKey: `disconn_${bc.id}_${bc.date}`,
+      lang: resolveLanguage(user.languageCode),
+    }).catch((e) => console.warn('[Webhook] notifyAccountDisconnected note:', e?.message));
   }
 }
 
@@ -327,7 +368,11 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
       if (automationSettings.panicEnabled) {
         const bot = getBot();
         try {
-          await bot.api.deleteMessage(msg.chat.id, msg.message_id);
+          if (typeof (bot.api as any).deleteBusinessMessages === 'function' && msg.business_connection_id) {
+            await (bot.api as any).deleteBusinessMessages(msg.business_connection_id, [msg.message_id]);
+          } else {
+            await bot.api.deleteMessage(msg.chat.id, msg.message_id);
+          }
         } catch (delErr: any) {
           console.warn('[ChatAutomation] Panic delete failed:', delErr?.description);
         }
@@ -343,7 +388,11 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
         } else {
           const bot = getBot();
           try {
-            await bot.api.deleteMessage(msg.chat.id, msg.message_id);
+            if (typeof (bot.api as any).deleteBusinessMessages === 'function' && msg.business_connection_id) {
+              await (bot.api as any).deleteBusinessMessages(msg.business_connection_id, [msg.message_id]);
+            } else {
+              await bot.api.deleteMessage(msg.chat.id, msg.message_id);
+            }
           } catch (delErr: any) {
             console.warn('[ChatAutomation] Mute delete failed:', delErr?.description);
           }
@@ -359,8 +408,8 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
   if (cmdContext.isCommand) {
     try {
       await executeDotCommand(cmdContext);
-    } catch (cmdErr) {
-      console.error('[Webhook] Error executing dot command:', cmdErr);
+    } catch (cmdErr: any) {
+      console.error('[DotCommand] Error executing command in business chat:', cmdErr);
     }
   } else if (cmdContext.isIncomingMessage && cmdContext.effectiveText) {
     // Auto-translation for incoming messages in managed chat if enabled
@@ -395,6 +444,7 @@ async function handleEditedBusinessMessage(msg: TgMessage): Promise<void> {
 
   const connection = await prisma.businessConnection.findUnique({
     where: { telegramConnectionId: msg.business_connection_id },
+    include: { user: true },
   });
   if (!connection || connection.status !== 'ACTIVE') return;
 
@@ -418,6 +468,21 @@ async function handleEditedBusinessMessage(msg: TgMessage): Promise<void> {
     newCaption: msg.caption,
     editedAt: new Date((msg.edit_date ?? msg.date) * 1000),
   });
+
+  // Private owner notification for edited message
+  if (!settings || settings.notificationsOn || settings.saveEdits) {
+    const editTimestamp = msg.edit_date ?? msg.date;
+    await ownerNotificationService.notifyMessageEdited({
+      userId: connection.userId,
+      telegramUserId: connection.user.telegramId,
+      chatId: chat.id,
+      chatTitle: chat.title ?? undefined,
+      messageId: msg.message_id,
+      previewText: msg.text || msg.caption || undefined,
+      dedupeKey: `edit_${chat.id}_${msg.message_id}_${editTimestamp}`,
+      lang: resolveLanguage(connection.user.languageCode),
+    }).catch((e) => console.warn('[Webhook] notifyMessageEdited note:', e?.message));
+  }
 }
 
 // ============================================================
@@ -429,6 +494,7 @@ async function handleDeletedBusinessMessages(update: Update): Promise<void> {
 
   const connection = await prisma.businessConnection.findUnique({
     where: { telegramConnectionId: del.business_connection_id },
+    include: { user: true },
   });
   if (!connection || connection.status !== 'ACTIVE') return;
 
@@ -446,6 +512,19 @@ async function handleDeletedBusinessMessages(update: Update): Promise<void> {
   if (!chat) return;
 
   await processDeletedMessages(chat.id, del.message_ids, new Date());
+
+  // Private owner notification for deleted messages (aggregated)
+  if (!settings || settings.notificationsOn || settings.saveDeleted) {
+    await ownerNotificationService.notifyMessageDeleted({
+      userId: connection.userId,
+      telegramUserId: connection.user.telegramId,
+      chatId: chat.id,
+      chatTitle: chat.title ?? undefined,
+      messageIds: del.message_ids,
+      dedupeKey: `del_${chat.id}_${del.message_ids.slice().sort().join('_')}`,
+      lang: resolveLanguage(connection.user.languageCode),
+    }).catch((e) => console.warn('[Webhook] notifyMessageDeleted note:', e?.message));
+  }
 }
 
 // ============================================================

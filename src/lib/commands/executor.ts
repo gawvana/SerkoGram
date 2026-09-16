@@ -22,6 +22,7 @@ import {
 import type { ParsedCommandResult } from './parser';
 import type { NormalizedCommandContext } from './context';
 import { jobService } from '@/lib/services/job-service';
+import { safeEvaluateArithmetic } from '@/lib/utils/math-eval';
 import type { CommandExecutionStatus } from '@prisma/client';
 
 export interface ExecuteDotCommandContext {
@@ -1166,20 +1167,11 @@ export async function executeDotCommand(
         if (!expr) {
           responseText = `🧮 <b>Калькулятор</b>\n\nИспользование: <code>.calc 2 + 2 * 5</code>`;
         } else {
-          const sanitized = expr.replace(/,/g, '.');
-          if (!/^[0-9+\-*/%^().\s]+$/.test(sanitized)) {
-            responseText = `❌ <b>Ошибка:</b> Недопустимые символы в выражении.`;
-          } else {
-            try {
-              const result = Function(`"use strict"; return (${sanitized});`)();
-              if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
-                responseText = `🧮 <b>Калькулятор</b>\n\n<code>${escapeHtml(expr)} = ${result}</code>`;
-              } else {
-                responseText = `❌ <b>Ошибка вычисления</b>`;
-              }
-            } catch {
-              responseText = `❌ <b>Ошибка:</b> Некорректное математическое выражение.`;
-            }
+          try {
+            const result = safeEvaluateArithmetic(expr);
+            responseText = `🧮 <b>Калькулятор</b>\n\n<code>${escapeHtml(expr)} = ${result}</code>`;
+          } catch (calcErr: any) {
+            responseText = `❌ <b>Ошибка вычисления:</b> ${escapeHtml(calcErr?.message || 'Некорректное математическое выражение')}.`;
           }
         }
         break;
@@ -1200,15 +1192,15 @@ export async function executeDotCommand(
             const data = await res.json();
             const current = data.current_condition?.[0];
             const desc = current?.lang_ru?.[0]?.value || current?.weatherDesc?.[0]?.value || 'Ясно';
-            const temp = current?.temp_C || '+15';
+            const temp = current?.temp_C || '0';
             const feels = current?.FeelsLikeC || temp;
-            const humidity = current?.humidity || '60';
+            const humidity = current?.humidity || '0';
             responseText = `🌤 <b>Погода в ${escapeHtml(city)}</b>\n\n• <i>Состояние:</i> ${escapeHtml(desc)}\n• <i>Температура:</i> ${temp}°C (ощущается как ${feels}°C)\n• <i>Влажность:</i> ${humidity}%`;
           } else {
-            responseText = `🌤 <b>Погода в ${escapeHtml(city)}</b>\n\n• <i>Температура:</i> +18°C\n• <i>Состояние:</i> Переменная облачность`;
+            responseText = `⚠️ <b>Погода:</b> Сервис погоды временно недоступен или город «${escapeHtml(city)}» не найден.`;
           }
         } catch {
-          responseText = `🌤 <b>Погода в ${escapeHtml(city)}</b>\n\n• <i>Температура:</i> +18°C\n• <i>Состояние:</i> Переменная облачность`;
+          responseText = `⚠️ <b>Погода:</b> Сервис погоды временно недоступен или город «${escapeHtml(city)}» не найден.`;
         }
         break;
       }

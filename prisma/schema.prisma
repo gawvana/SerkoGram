@@ -119,6 +119,12 @@ enum NotificationType {
   MESSAGE_DELETED
   MESSAGE_EDITED
   COMMAND_RESULT
+  ACCOUNT_CONNECTED
+  ACCOUNT_DISCONNECTED
+  PERMISSION_CHANGED
+  ARCHIVE_UPDATED
+  AUTOMATION_ERROR
+  TIMER_COMPLETED
   SYSTEM
 }
 
@@ -481,6 +487,8 @@ model OwnerNotification {
   id             String             @id @default(cuid())
   userId         String             @map("user_id")
   telegramUserId BigInt             @map("telegram_user_id")
+  connectionId   String?            @map("connection_id")
+  dedupeKey      String?            @unique @map("dedupe_key")
   type           NotificationType
   title          String
   text           String
@@ -499,6 +507,7 @@ model OwnerNotification {
 
   @@index([userId])
   @@index([telegramUserId])
+  @@index([connectionId])
   @@index([status])
   @@index([createdAt])
   @@map("owner_notifications")
