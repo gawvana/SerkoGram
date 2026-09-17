@@ -91,7 +91,11 @@ export async function processUpdate(update: Update): Promise<void> {
 async function handleBusinessConnection(update: Update): Promise<void> {
   const bc = update.business_connection!;
 
-  // Find or create user
+  // Authoritative Telegram Premium detection
+  const isAuthoritativePremium = typeof bc.user.is_premium === 'boolean' ? bc.user.is_premium : null;
+  const connectionMode = isAuthoritativePremium === true ? 'PREMIUM_BUSINESS' : 'AUTOMATION_CHAT';
+
+  // Find or create user with authoritative premium status
   const user = await prisma.user.upsert({
     where: { telegramId: BigInt(bc.user.id) },
     create: {
@@ -100,15 +104,22 @@ async function handleBusinessConnection(update: Update): Promise<void> {
       lastName: bc.user.last_name ?? null,
       username: bc.user.username ?? null,
       isPremium: bc.user.is_premium ?? false,
+      telegramPremium: isAuthoritativePremium,
     },
     update: {
       firstName: bc.user.first_name,
       lastName: bc.user.last_name ?? null,
       username: bc.user.username ?? null,
+      isPremium: bc.user.is_premium ?? false,
+      ...(isAuthoritativePremium !== null ? { telegramPremium: isAuthoritativePremium } : {}),
     },
   });
 
-  const canReply = Boolean((bc as any).can_reply ?? (bc as any).rights?.can_reply ?? false);
+  const rights = (bc as any).rights;
+  const canReply = Boolean((bc as any).can_reply ?? rights?.can_reply ?? false);
+  const canReadMessages = Boolean(rights?.can_read_messages ?? (bc as any).can_read_messages ?? true);
+  const canDeleteSentMessages = Boolean(rights?.can_delete_sent_messages ?? rights?.can_delete_outgoing_messages ?? true);
+  const canDeleteAllMessages = Boolean(rights?.can_delete_all_messages ?? false);
 
   const existingConn = await prisma.businessConnection.findUnique({
     where: { telegramConnectionId: bc.id },
@@ -125,15 +136,25 @@ async function handleBusinessConnection(update: Update): Promise<void> {
         userId: user.id,
         telegramConnectionId: bc.id,
         type: 'BUSINESS',
+        connectionMode,
         status: 'ACTIVE',
         canReply,
+        canReadMessages,
+        canDeleteSentMessages,
+        canDeleteAllMessages,
         isEnabled: true,
+        telegramPremium: isAuthoritativePremium,
         connectedAt: new Date(bc.date * 1000),
       },
       update: {
+        connectionMode,
         status: 'ACTIVE',
         canReply,
+        canReadMessages,
+        canDeleteSentMessages,
+        canDeleteAllMessages,
         isEnabled: true,
+        telegramPremium: isAuthoritativePremium,
         disconnectedAt: null,
       },
     });
@@ -153,6 +174,11 @@ async function handleBusinessConnection(update: Update): Promise<void> {
 
     await logAudit('CONNECTION_CREATED', user.id, {
       canReply,
+      canReadMessages,
+      canDeleteSentMessages,
+      canDeleteAllMessages,
+      connectionMode,
+      telegramPremium: isAuthoritativePremium,
       date: bc.date,
       telegramConnectionId: bc.id,
     });

@@ -105,6 +105,24 @@ export interface SessionPayload {
   expiresAt: number;
 }
 
+export type ConnectionMode = 'PREMIUM_BUSINESS' | 'AUTOMATION_CHAT';
+export type PremiumState = 'PREMIUM_TRUE' | 'PREMIUM_FALSE' | 'PREMIUM_UNKNOWN';
+
+export interface ConnectionPermissions {
+  can_read_messages: boolean;
+  can_reply: boolean;
+  can_delete_sent_messages: boolean;
+  can_delete_all_messages: boolean;
+}
+
+export interface AccountConnectionState {
+  premium: PremiumState;
+  mode: ConnectionMode;
+  status: 'ACTIVE' | 'WAITING' | 'DISCONNECTED' | 'ERROR';
+  connectionId: string | null;
+  permissions: ConnectionPermissions;
+}
+
 // ============================================================
 // Dashboard / Stats Types
 // ============================================================

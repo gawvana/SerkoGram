@@ -122,6 +122,7 @@ export async function getAuthenticatedUser(): Promise<User | null> {
         const tgUser = initData.user;
         const adminTelegramId = process.env.ADMIN_TELEGRAM_ID;
         const isAdmin = Boolean(adminTelegramId && String(tgUser.id) === adminTelegramId.trim());
+        const telegramPremium = typeof tgUser.is_premium === 'boolean' ? tgUser.is_premium : null;
 
         const user = await prisma.user.upsert({
           where: { telegramId: BigInt(tgUser.id) },
@@ -132,6 +133,7 @@ export async function getAuthenticatedUser(): Promise<User | null> {
             languageCode: tgUser.language_code || 'ru',
             photoUrl: tgUser.photo_url || null,
             isPremium: tgUser.is_premium || false,
+            ...(telegramPremium !== null ? { telegramPremium } : {}),
             isAdmin: isAdmin,
             lastLoginAt: new Date(),
           },
@@ -143,6 +145,7 @@ export async function getAuthenticatedUser(): Promise<User | null> {
             languageCode: tgUser.language_code || 'ru',
             photoUrl: tgUser.photo_url || null,
             isPremium: tgUser.is_premium || false,
+            telegramPremium: telegramPremium,
             isAdmin: isAdmin,
             settings: { create: {} },
             privacySettings: { create: {} },
