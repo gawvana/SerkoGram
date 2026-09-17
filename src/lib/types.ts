@@ -189,6 +189,7 @@ export interface MediaItem {
   height: number | null;
   duration: number | null;
   isDownloaded: boolean;
+  storageUrl?: string | null;
   isEphemeral?: boolean;
   isViewOnce?: boolean;
   archiveStatus?: string;

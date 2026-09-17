@@ -8,9 +8,9 @@
 import { PrismaClient } from '@prisma/client';
 
 class MemoryModel {
-  private records = new Map<string, any>();
+  public records = new Map<string, any>();
 
-  constructor(public modelName: string) {}
+  constructor(public modelName: string, private modelsMap?: Map<string, MemoryModel>) {}
 
   private matchesWhere(item: any, where: any): boolean {
     if (!where) return true;
@@ -34,6 +34,14 @@ class MemoryModel {
           const expectedUser = (val as any).connection.userId;
           if (item.chat?.connection?.userId && item.chat.connection.userId !== expectedUser) return false;
           if (item.connection?.userId && item.connection.userId !== expectedUser) return false;
+        }
+        continue;
+      }
+
+      if (key === 'message' && typeof val === 'object' && val !== null) {
+        if ((val as any).chat?.connection?.userId) {
+          const expectedUser = (val as any).chat.connection.userId;
+          if (item.message?.chat?.connection?.userId && item.message.chat.connection.userId !== expectedUser) return false;
         }
         continue;
       }
@@ -140,7 +148,11 @@ class MemoryModel {
   }
 
   async create(args: any = {}): Promise<any> {
-    const id = args.data?.id || `mem_${this.modelName}_${Math.random().toString(36).slice(2, 9)}`;
+    const id =
+      args.data?.id ||
+      (typeof crypto?.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `sg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`);
     const record = {
       id,
       createdAt: new Date(),
@@ -280,6 +292,33 @@ class MemoryModel {
         allowSearch: true,
       };
     }
+    if (include.message) {
+      const realMsg = item.messageId && this.modelsMap?.get('message')?.records.get(item.messageId);
+      if (realMsg) {
+        item.message = {
+          ...realMsg,
+          chat: realMsg.chat || {
+            id: realMsg.chatId,
+            connection: { userId: item.userId || 'usr_owner_fallback' },
+          },
+        };
+      } else if (!item.message) {
+        item.message = {
+          id: item.messageId || 'msg_fallback',
+          chatId: item.chatId || 'chat_fallback',
+          telegramMessageId: 100,
+          telegramDate: item.createdAt || new Date(),
+          text: null,
+          caption: null,
+          senderName: 'Собеседник',
+          isDeleted: false,
+          chat: {
+            id: item.chatId || 'chat_fallback',
+            connection: { userId: item.userId || 'usr_owner_fallback' },
+          },
+        };
+      }
+    }
     if (include._count) {
       item._count = { chats: 0, messages: 0, versions: 0, media: 0 };
     }
@@ -293,7 +332,7 @@ function createInMemoryStore(): any {
   const getModel = (name: string) => {
     let m = models.get(name);
     if (!m) {
-      m = new MemoryModel(name);
+      m = new MemoryModel(name, models);
       models.set(name, m);
     }
     return m;

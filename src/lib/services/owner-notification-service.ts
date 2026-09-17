@@ -183,15 +183,22 @@ class OwnerNotificationService {
         messageText += `\n${text}\n`;
       }
 
-      // Inline button to open Mini App archive if applicable
+      // Inline buttons to open Mini App media viewer and archive
       let replyMarkup: any = undefined;
       if (appUrl) {
         const keyboard: any[] = [];
-        const targetUrl = chatId
-          ? `${appUrl}/archive/${encodeURIComponent(chatId)}`
-          : `${appUrl}/archive`;
-
-        keyboard.push([{ text: '📁 Открыть в архиве', web_app: { url: targetUrl } }]);
+        if (mediaId) {
+          keyboard.push([{ text: '🖼 Посмотреть медиа', web_app: { url: `${appUrl}/archive/media/${encodeURIComponent(mediaId)}` } }]);
+        }
+        if (chatId) {
+          const cleanChatId = String(chatId).startsWith('mem_') ? '' : String(chatId);
+          const targetUrl = cleanChatId
+            ? `${appUrl}/archive/${encodeURIComponent(cleanChatId)}`
+            : `${appUrl}/archive`;
+          keyboard.push([{ text: '📁 Открыть чат в архиве', web_app: { url: targetUrl } }]);
+        } else {
+          keyboard.push([{ text: '📁 Открыть архив', web_app: { url: `${appUrl}/archive` } }]);
+        }
         replyMarkup = { inline_keyboard: keyboard };
       }
 
@@ -303,7 +310,7 @@ class OwnerNotificationService {
       userId: params.userId,
       telegramUserId: params.telegramUserId,
       type: 'ARCHIVE_FAILURE',
-      title: '⚠️ Ошибка сохранения медиа',
+      title: '❌ Ошибка сохранения медиа',
       text: `Не удалось сохранить медиафайл: ${escapeHtml(params.error)}`,
       chatId: params.chatId,
       chatTitle: params.chatTitle,

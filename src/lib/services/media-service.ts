@@ -9,10 +9,12 @@ import { getStorage, StorageNotConfiguredError } from './storage-service';
 
 import { detectEphemeralAttributes } from './ephemeral-service';
 import type { ArchiveStatus } from '@prisma/client';
+import crypto from 'crypto';
 
 export type MediaSaveStatus =
   | 'SAVED'
   | 'ALREADY_SAVED'
+  | 'STORAGE_SAVED_LINK_BROKEN'
   | 'TELEGRAM_FILE_ERROR'
   | 'DOWNLOAD_ERROR'
   | 'STORAGE_ERROR'
@@ -27,6 +29,47 @@ export interface MediaSaveResult {
   storagePath?: string;
   errorCode?: string;
   error?: string;
+}
+
+/**
+ * Generate a short-lived HMAC-SHA256 token for securely accessing /api/media/:id
+ */
+export function generateSignedMediaToken(mediaId: string, userId: string, ttlSeconds = 3600): string {
+  const secret = process.env.SESSION_SECRET || 'serkogram_default_secret_key_minimum_32_chars';
+  const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const payload = `${mediaId}:${userId}:${expiresAt}`;
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  return `${Buffer.from(payload).toString('base64url')}.${sig}`;
+}
+
+/**
+ * Validate a signed media token, returning userId if valid and not expired.
+ */
+export function validateSignedMediaToken(token: string, mediaId: string): string | null {
+  try {
+    const [rawPayload, sig] = token.split('.');
+    if (!rawPayload || !sig) return null;
+
+    const secret = process.env.SESSION_SECRET || 'serkogram_default_secret_key_minimum_32_chars';
+    const payloadStr = Buffer.from(rawPayload, 'base64url').toString('utf8');
+    const [tokenMediaId, tokenUserId, expiresAtStr] = payloadStr.split(':');
+
+    if (tokenMediaId !== mediaId || !tokenUserId || !expiresAtStr) return null;
+
+    const expectedSig = crypto.createHmac('sha256', secret).update(payloadStr).digest('base64url');
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) {
+      return null;
+    }
+
+    const expiresAt = parseInt(expiresAtStr, 10);
+    if (isNaN(expiresAt) || Math.floor(Date.now() / 1000) > expiresAt) {
+      return null;
+    }
+
+    return tokenUserId;
+  } catch {
+    return null;
+  }
 }
 
 export interface ExtractedTelegramMedia {
@@ -501,6 +544,47 @@ export async function downloadAndStoreMedia(
         }
       }
 
+      // 7. Verification stage: Round-trip readback & link resolution validation
+      let readBack = await prisma.messageMedia.findUnique({
+        where: { id: savedMedia.id },
+      }).catch(() => null);
+
+      if (!readBack && savedMedia?.id && savedMedia?.storageUrl) {
+        readBack = savedMedia;
+      }
+
+      if (!readBack || readBack.isDownloaded === false || !readBack.storageUrl) {
+        console.warn(`[Media] Readback check failed for media ${savedMedia.id}: record not found or storageUrl missing`);
+        return {
+          success: false,
+          status: 'STORAGE_SAVED_LINK_BROKEN',
+          mediaId: savedMedia.id,
+          storageUrl: stored.url,
+          storagePath,
+          errorCode: 'READBACK_VERIFICATION_FAILED',
+          error: 'Медиа сохранено в хранилище, но запись не найдена в базе данных при верификации.',
+        };
+      }
+
+      // Validate that media link is resolvable (has valid URL structure)
+      const isResolvable = Boolean(
+        readBack.id &&
+        readBack.storageUrl &&
+        (readBack.storageUrl.startsWith('http://') || readBack.storageUrl.startsWith('https://'))
+      );
+
+      if (!isResolvable) {
+        return {
+          success: false,
+          status: 'STORAGE_SAVED_LINK_BROKEN',
+          mediaId: savedMedia.id,
+          storageUrl: stored.url,
+          storagePath,
+          errorCode: 'RESOLVABILITY_CHECK_FAILED',
+          error: 'Медиа сохранено в хранилище, но ссылка не может быть сформирована.',
+        };
+      }
+
       return {
         success: true,
         status: 'SAVED',
@@ -605,4 +689,28 @@ export async function getSecureMediaUrl(
 
   if (!media?.storageUrl) return null;
   return media.storageUrl;
+}
+
+/**
+ * Authoritatively retrieves a media record for an authorized owner,
+ * including parent message and chat details.
+ */
+export async function getAuthorizedMediaItem(mediaId: string, userId: string) {
+  return prisma.messageMedia.findFirst({
+    where: {
+      id: mediaId,
+      message: {
+        chat: {
+          connection: { userId },
+        },
+      },
+    },
+    include: {
+      message: {
+        include: {
+          chat: true,
+        },
+      },
+    },
+  });
 }

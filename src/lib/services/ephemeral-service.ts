@@ -113,10 +113,13 @@ export async function saveEphemeralMedia(
         );
 
         if (!dlResult.success) {
+          const isBrokenLink = dlResult.status === 'STORAGE_SAVED_LINK_BROKEN';
           return {
             success: false,
-            archiveStatus: 'FAILED',
-            message: dlResult.error || 'Ошибка загрузки медиафайла',
+            archiveStatus: isBrokenLink ? 'UNAVAILABLE' : 'FAILED',
+            message: isBrokenLink
+              ? '⚠️ Медиа сохранено в хранилище, но ссылка для просмотра сейчас недоступна.'
+              : `❌ Не удалось сохранить медиафайл: ${dlResult.error || 'ошибка хранилища.'}`,
             error: dlResult.error || 'Ошибка загрузки медиафайла',
           };
         }
@@ -125,10 +128,13 @@ export async function saveEphemeralMedia(
           where: { messageId: targetMsg.id, fileUniqueId: extracted.fileUniqueId },
         });
 
+        const isAlready = dlResult.status === 'ALREADY_SAVED';
         return {
           success: true,
           archiveStatus: 'ARCHIVED',
-          message: 'Медиафайл успешно зафиксирован и сохранён в защищённом архиве SerkoGram!',
+          message: isAlready
+            ? 'ℹ️ Медиафайл уже успешно сохранён в защищённом архиве SerkoGram.'
+            : '✅ Медиафайл успешно зафиксирован и сохранён в защищённом архиве SerkoGram!',
           media: storedMedia,
           isViewOnce: extracted.isViewOnce,
           isEphemeral: extracted.isEphemeral,
@@ -138,7 +144,7 @@ export async function saveEphemeralMedia(
         return {
           success: false,
           archiveStatus: 'FAILED',
-          message: 'Ошибка при сохранении медиафайла',
+          message: '❌ Не удалось сохранить медиафайл: ошибка передачи данных.',
           error: dlErr?.message,
         };
       }
@@ -241,10 +247,13 @@ export async function saveEphemeralMedia(
       );
 
       if (!dlRes.success) {
+        const isBrokenLink = dlRes.status === 'STORAGE_SAVED_LINK_BROKEN';
         return {
           success: false,
-          archiveStatus: 'FAILED',
-          message: dlRes.error || 'Ошибка загрузки медиафайла',
+          archiveStatus: isBrokenLink ? 'UNAVAILABLE' : 'FAILED',
+          message: isBrokenLink
+            ? '⚠️ Медиа сохранено в хранилище, но ссылка для просмотра сейчас недоступна.'
+            : `❌ Не удалось сохранить медиафайл: ${dlRes.error || 'ошибка хранилища.'}`,
           error: dlRes.error || 'Ошибка загрузки медиафайла',
         };
       }
@@ -263,7 +272,7 @@ export async function saveEphemeralMedia(
       return {
         success: true,
         archiveStatus: 'ARCHIVED',
-        message: 'Одноразовый медиафайл успешно зафиксирован и сохранён в вашем архиве!',
+        message: '✅ Одноразовый медиафайл успешно зафиксирован и сохранён в вашем архиве!',
         media: updated,
         isViewOnce: true,
         isEphemeral: true,

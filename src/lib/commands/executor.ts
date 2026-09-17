@@ -473,7 +473,7 @@ export async function executeDotCommand(
               await ownerNotificationService.notifyEphemeralSaved({
                 userId,
                 telegramUserId: targetOwnerId,
-                chatId,
+                chatId: telegramChatId.toString(),
                 chatTitle: ctx.chatTitle,
                 messageId: replyToMessageId,
                 mediaId: res.media?.id,
@@ -484,7 +484,7 @@ export async function executeDotCommand(
               await ownerNotificationService.notifyArchiveSuccess({
                 userId,
                 telegramUserId: targetOwnerId,
-                chatId,
+                chatId: telegramChatId.toString(),
                 chatTitle: ctx.chatTitle,
                 messageId: replyToMessageId,
                 mediaId: res.media?.id,
@@ -497,7 +497,7 @@ export async function executeDotCommand(
             await ownerNotificationService.notifyArchiveFailure({
               userId,
               telegramUserId: targetOwnerId,
-              chatId,
+              chatId: telegramChatId.toString(),
               chatTitle: ctx.chatTitle,
               messageId: replyToMessageId,
               error: res.error || res.message,
@@ -533,7 +533,7 @@ export async function executeDotCommand(
             text: archiveLink
               ? `Архив переписки чата «${escapeHtml(ctx.chatTitle || 'Диалог')}»:\n${archiveLink}`
               : 'Архив текущего чата сохранён в SerkoGram.',
-            chatId,
+            chatId: telegramChatId.toString(),
             chatTitle: ctx.chatTitle,
           }).catch(() => null);
           responseText = null;
@@ -559,7 +559,7 @@ export async function executeDotCommand(
             text: deletedLink
               ? `Удалённые сообщения чата «${escapeHtml(ctx.chatTitle || 'Диалог')}»:\n${deletedLink}`
               : 'Раздел удалённых сообщений доступен в SerkoGram.',
-            chatId,
+            chatId: telegramChatId.toString(),
             chatTitle: ctx.chatTitle,
           }).catch(() => null);
           responseText = null;
@@ -584,8 +584,8 @@ export async function executeDotCommand(
             title: '📷 Медиатека',
             text: mediaLink
               ? `Медиафайлы чата «${escapeHtml(ctx.chatTitle || 'Диалог')}»:\n${mediaLink}`
-              : 'Медиатека доступна в SerkoGram.',
-            chatId,
+              : 'Медиатека текущего чата доступна в SerkoGram.',
+            chatId: telegramChatId.toString(),
             chatTitle: ctx.chatTitle,
           }).catch(() => null);
           responseText = null;

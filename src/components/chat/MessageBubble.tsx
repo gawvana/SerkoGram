@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import {
   CheckCheck,
   Trash2,
@@ -13,6 +14,8 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  Download,
+  AlertTriangle,
 } from 'lucide-react';
 import type { MessageItem } from '@/lib/types';
 
@@ -109,74 +112,139 @@ export function MessageBubble({ msg }: MessageBubbleProps) {
         {/* Media Attachments */}
         {msg.media && msg.media.length > 0 && (
           <div className="space-y-1.5 mb-2">
-            {msg.media.map((item) => (
-              <div key={item.id} className="rounded-xl overflow-hidden bg-black/20">
-                {(item.isEphemeral || item.isViewOnce) && (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] bg-amber-500/15 border-b border-amber-500/20 text-amber-300 font-medium">
-                    <Clock className="w-3 h-3 text-amber-400 shrink-0" />
-                    <span>Одноразовое</span>
-                    <span className="ml-auto text-[10px] opacity-80">
-                      {item.archiveStatus === 'ARCHIVED'
-                        ? 'Сохранено в архиве'
-                        : item.archiveStatus === 'EXPIRED_BEFORE_ARCHIVE'
-                        ? 'Истекло до архивации'
-                        : item.archiveStatus === 'FAILED'
-                        ? 'Ошибка загрузки'
-                        : 'Временный файл'}
-                    </span>
-                  </div>
-                )}
-                {item.mediaType === 'photo' ? (
-                  <div className="relative aspect-video flex items-center justify-center bg-black/30">
-                    <ImageIcon className="w-8 h-8 text-white/50" />
-                    <span className="text-2xs text-white/70 absolute bottom-1 right-2">Фото</span>
-                  </div>
-                ) : item.mediaType === 'video' ? (
-                  <div className="relative aspect-video flex items-center justify-center bg-black/30">
-                    <VideoIcon className="w-8 h-8 text-white/50" />
-                    <span className="text-2xs text-white/70 absolute bottom-1 right-2">
-                      {item.duration ? `${Math.floor(item.duration / 60)}:${item.duration % 60}` : 'Видео'}
-                    </span>
-                  </div>
-                ) : item.mediaType === 'voice' || item.mediaType === 'audio' ? (
-                  <div className="flex items-center gap-3 p-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setIsPlayingVoice(!isPlayingVoice)}
-                      className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition-colors"
-                      aria-label="Play/Pause voice"
+            {msg.media.map((item) => {
+              const isFailed = item.archiveStatus === 'FAILED';
+              const isExpired = item.archiveStatus === 'EXPIRED_BEFORE_ARCHIVE';
+              const isAvailable = Boolean(item.isDownloaded) && !isFailed;
+              const mediaApiUrl = `/api/media/${item.id}`;
+              const viewerUrl = `/archive/media/${item.id}`;
+
+              return (
+                <div key={item.id} className="rounded-xl overflow-hidden bg-black/20 border border-white/[0.06]">
+                  {(item.isEphemeral || item.isViewOnce) && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] bg-amber-500/15 border-b border-amber-500/20 text-amber-300 font-medium">
+                      <Clock className="w-3 h-3 text-amber-400 shrink-0" />
+                      <span>Одноразовое</span>
+                      <span className="ml-auto text-[10px] opacity-80">
+                        {item.archiveStatus === 'ARCHIVED'
+                          ? 'Сохранено в архиве'
+                          : isExpired
+                          ? 'Истекло до архивации'
+                          : isFailed
+                          ? 'Ошибка загрузки'
+                          : 'Временный файл'}
+                      </span>
+                    </div>
+                  )}
+
+                  {isFailed ? (
+                    <div className="p-3 bg-red-500/10 text-red-300 text-xs flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                      <span>❌ Не удалось сохранить медиафайл</span>
+                    </div>
+                  ) : isExpired ? (
+                    <div className="p-3 bg-amber-500/10 text-amber-300 text-xs flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>⚠️ Срок действия истёк на серверах Telegram</span>
+                    </div>
+                  ) : !isAvailable ? (
+                    <div className="p-3 bg-white/[0.04] text-sg-text-muted text-xs flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>⚠️ Медиа сохранено, но сейчас недоступно для просмотра</span>
+                    </div>
+                  ) : item.mediaType === 'photo' ? (
+                    <Link
+                      href={viewerUrl}
+                      className="block group relative overflow-hidden bg-black/40 cursor-pointer"
+                      title="Нажмите, чтобы открыть фото"
                     >
-                      {isPlayingVoice ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
-                    </button>
-                    <div className="flex-1">
-                      <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full bg-white rounded-full transition-all ${
-                            isPlayingVoice ? 'w-2/3' : 'w-0'
-                          }`}
-                        />
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={mediaApiUrl}
+                        alt={item.fileName || 'Фото'}
+                        className="w-full max-h-72 object-cover transition-transform duration-200 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                        <span className="opacity-0 group-hover:opacity-100 transition-opacity px-2.5 py-1 rounded-full bg-black/60 backdrop-blur text-2xs text-white">
+                          Открыть
+                        </span>
                       </div>
-                      <div className="flex justify-between items-center mt-1 text-[10px] opacity-70">
-                        <span>{item.mediaType === 'voice' ? 'Голосовое' : 'Аудио'}</span>
-                        <span>{item.duration ? `${item.duration} сек` : ''}</span>
+                      <span className="text-2xs text-white/80 bg-black/60 px-1.5 py-0.5 rounded absolute bottom-1.5 right-1.5">
+                        Фото
+                      </span>
+                    </Link>
+                  ) : item.mediaType === 'video' || item.mediaType === 'video_note' ? (
+                    <div className="relative overflow-hidden bg-black/40">
+                      <video
+                        src={mediaApiUrl}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        className="w-full max-h-72 object-cover"
+                      />
+                      <Link
+                        href={viewerUrl}
+                        className="flex items-center justify-between px-2.5 py-1.5 text-2xs text-white/70 hover:text-white bg-black/40 border-t border-white/[0.06] transition-colors"
+                      >
+                        <span>{item.duration ? `${Math.floor(item.duration / 60)}:${(item.duration % 60).toString().padStart(2, '0')}` : 'Видео'}</span>
+                        <span className="text-emerald-400 hover:underline">Открыть плеер →</span>
+                      </Link>
+                    </div>
+                  ) : item.mediaType === 'animation' ? (
+                    <Link
+                      href={viewerUrl}
+                      className="block relative overflow-hidden bg-black/40 cursor-pointer"
+                    >
+                      <video
+                        src={mediaApiUrl}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="w-full max-h-72 object-cover"
+                      />
+                      <span className="text-2xs text-white/80 bg-black/60 px-1.5 py-0.5 rounded absolute bottom-1.5 right-1.5">
+                        GIF
+                      </span>
+                    </Link>
+                  ) : item.mediaType === 'voice' || item.mediaType === 'audio' ? (
+                    <div className="p-2.5 bg-black/20 space-y-1.5">
+                      <div className="flex items-center justify-between text-2xs text-sg-text-secondary">
+                        <span className="font-medium text-emerald-300">
+                          {item.mediaType === 'voice' ? '🎙 Голосовое' : '🎵 Аудио'}
+                        </span>
+                        {item.duration && <span>{item.duration} сек</span>}
                       </div>
+                      <audio
+                        src={mediaApiUrl}
+                        controls
+                        preload="none"
+                        className="w-full h-8"
+                      />
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2.5 p-2">
-                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">
-                      <FileText className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium truncate">{item.fileName ?? 'Файл'}</p>
-                      <p className="text-[10px] opacity-70">
-                        {item.fileSize ? `${(item.fileSize / 1024).toFixed(1)} КБ` : item.mimeType}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+                  ) : (
+                    <a
+                      href={mediaApiUrl}
+                      download={item.fileName || 'file'}
+                      className="flex items-center gap-2.5 p-2.5 hover:bg-white/[0.08] transition-colors"
+                      title="Скачать файл"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium truncate text-white">{item.fileName ?? 'Документ'}</p>
+                        <p className="text-[10px] opacity-70">
+                          {item.fileSize ? `${(item.fileSize / 1024).toFixed(1)} КБ` : item.mimeType || 'Файл'}
+                        </p>
+                      </div>
+                      <Download className="w-3.5 h-3.5 text-sg-text-muted hover:text-white shrink-0" />
+                    </a>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
