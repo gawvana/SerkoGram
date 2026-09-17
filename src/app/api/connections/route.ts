@@ -20,7 +20,11 @@ export async function GET() {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return apiSuccess({ connections: serializeBigInt(connections) });
+    const activeConnection = connections.find((c) => c.status === 'ACTIVE' && c.isEnabled) || connections[0] || null;
+    return apiSuccess({
+      connections: serializeBigInt(connections),
+      connection: serializeBigInt(activeConnection),
+    });
   } catch (error: any) {
     return apiError(error.message || 'Ошибка сервера', error.status || 500);
   }

@@ -5,7 +5,7 @@
 
 import { prisma } from '@/lib/db';
 import { getBot } from '@/lib/telegram/bot';
-import { getStorage } from './storage-service';
+import { getStorage, StorageNotConfiguredError } from './storage-service';
 
 import { detectEphemeralAttributes } from './ephemeral-service';
 import type { ArchiveStatus } from '@prisma/client';
@@ -267,6 +267,19 @@ export async function downloadAndStoreMedia(
     const bot = getBot();
     const storage = getStorage();
 
+    // Check storage readiness before proceeding
+    if (typeof storage.isConfigured === 'function' && !storage.isConfigured()) {
+      const msg = 'Хранилище SerkoGram не настроено (отсутствует BLOB_READ_WRITE_TOKEN). Для сохранения медиафайлов подключите Vercel Blob.';
+      console.warn('[Media] Storage is not configured (missing BLOB_READ_WRITE_TOKEN)');
+      await recordFailedMedia(messageId, fileId, fileUniqueId, mediaType, metadata, 'STORAGE_ERROR', msg);
+      return {
+        success: false,
+        status: 'STORAGE_ERROR',
+        errorCode: 'STORAGE_NOT_CONFIGURED',
+        error: msg,
+      };
+    }
+
     // 2. Get file info from Telegram
     let file: any;
     try {
@@ -338,13 +351,25 @@ export async function downloadAndStoreMedia(
         contentType: metadata?.mimeType ?? 'application/octet-stream',
       });
     } catch (uploadErr: any) {
-      console.error('[Media] Storage upload failed:', uploadErr);
-      await recordFailedMedia(messageId, fileId, fileUniqueId, mediaType, metadata, 'STORAGE_ERROR', uploadErr?.message);
+      const isNotConfigured =
+        uploadErr instanceof StorageNotConfiguredError ||
+        uploadErr?.name === 'StorageNotConfiguredError' ||
+        uploadErr?.message?.includes('No token found') ||
+        uploadErr?.message?.includes('BLOB_READ_WRITE_TOKEN');
+
+      const userErrorMessage = isNotConfigured
+        ? 'Хранилище SerkoGram не настроено (отсутствует BLOB_READ_WRITE_TOKEN). Для сохранения медиафайлов подключите Vercel Blob.'
+        : uploadErr?.message || 'Storage upload failed';
+
+      const errorCode = isNotConfigured ? 'STORAGE_NOT_CONFIGURED' : 'STORAGE_UPLOAD_FAILED';
+
+      console.error('[Media] Storage upload failed:', uploadErr?.message || uploadErr);
+      await recordFailedMedia(messageId, fileId, fileUniqueId, mediaType, metadata, 'STORAGE_ERROR', userErrorMessage);
       return {
         success: false,
         status: 'STORAGE_ERROR',
-        errorCode: 'STORAGE_UPLOAD_FAILED',
-        error: uploadErr?.message || 'Storage upload failed',
+        errorCode,
+        error: userErrorMessage,
       };
     }
 

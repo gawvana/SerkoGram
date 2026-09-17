@@ -83,6 +83,28 @@ export default function DashboardPage() {
     enabled: isAuthed,
   });
 
+  // Business Connection Status
+  const { data: connection } = useQuery({
+    queryKey: ['connection'],
+    queryFn: async () => {
+      const headers: Record<string, string> = {};
+      if (initData) headers['x-telegram-init-data'] = initData;
+      const res = await fetch('/api/connections', { headers, credentials: 'include' });
+      if (!res.ok) return null;
+      const json = await res.json();
+      const list = Array.isArray(json?.data)
+        ? json.data
+        : (json?.data?.connections ?? (json?.data?.connection ? [json.data.connection] : []));
+      return list.find((c: any) => c.status === 'ACTIVE' && c.isEnabled) || list[0] || null;
+    },
+    enabled: isAuthed,
+    refetchInterval: (query) => {
+      // Poll every 4 seconds if not connected yet
+      const conn = query.state.data;
+      return conn?.status === 'ACTIVE' && conn?.isEnabled ? false : 4000;
+    },
+  });
+
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -138,6 +160,23 @@ export default function DashboardPage() {
       )}
 
       <div className="flex-1 px-4 space-y-4 animate-fade-in">
+        {/* Connection status banner if not connected */}
+        {(!connection || connection.status !== 'ACTIVE' || !connection.isEnabled) && (
+          <Link
+            href="/connect"
+            className="flex items-center justify-between p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 hover:bg-amber-500/15 transition-all group"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+              <div>
+                <p className="text-xs font-semibold text-white">Бот не подключен к Telegram Business</p>
+                <p className="text-[11px] text-zinc-400">Нажмите для подключения за 1 минуту →</p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors flex-shrink-0" />
+          </Link>
+        )}
+
         {/* Main stat card */}
         <div className="bg-sg-surface rounded-2xl p-5 border border-sg-border">
           <p className="text-sg-text-secondary text-sm">Всего сообщений</p>

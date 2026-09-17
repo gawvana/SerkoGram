@@ -4,9 +4,10 @@
 // ============================================================
 
 import crypto from 'crypto';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { SESSION_COOKIE_NAME, SESSION_MAX_AGE } from '@/lib/constants';
+import { validateInitData } from '@/lib/auth/telegram';
 import type { SessionPayload } from '@/lib/types';
 import type { User } from '@prisma/client';
 
@@ -88,31 +89,73 @@ export async function createSession(user: User): Promise<string> {
 }
 
 /**
- * Get the authenticated user from the session cookie.
+ * Get the authenticated user from the session cookie or x-telegram-init-data header.
  * Returns null if no valid session exists.
  */
 export async function getAuthenticatedUser(): Promise<User | null> {
+  // 1. Check session cookie first
   try {
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME);
 
-    if (!sessionCookie?.value) {
-      return null;
+    if (sessionCookie?.value) {
+      const payload = verifyToken(sessionCookie.value);
+      if (payload) {
+        const user = await prisma.user.findUnique({
+          where: { id: payload.userId },
+        });
+        if (user) return user;
+      }
     }
-
-    const payload = verifyToken(sessionCookie.value);
-    if (!payload) {
-      return null;
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-    });
-
-    return user;
   } catch {
-    return null;
+    // Cookie store might be unavailable outside request context
   }
+
+  // 2. Check x-telegram-init-data header fallback (critical for Mini App WebViews)
+  try {
+    const headerStore = await headers();
+    const initDataHeader = headerStore.get('x-telegram-init-data');
+
+    if (initDataHeader) {
+      const initData = validateInitData(initDataHeader);
+      if (initData?.user) {
+        const tgUser = initData.user;
+        const adminTelegramId = process.env.ADMIN_TELEGRAM_ID;
+        const isAdmin = Boolean(adminTelegramId && String(tgUser.id) === adminTelegramId.trim());
+
+        const user = await prisma.user.upsert({
+          where: { telegramId: BigInt(tgUser.id) },
+          update: {
+            firstName: tgUser.first_name,
+            lastName: tgUser.last_name || null,
+            username: tgUser.username || null,
+            languageCode: tgUser.language_code || 'ru',
+            photoUrl: tgUser.photo_url || null,
+            isPremium: tgUser.is_premium || false,
+            isAdmin: isAdmin,
+            lastLoginAt: new Date(),
+          },
+          create: {
+            telegramId: BigInt(tgUser.id),
+            firstName: tgUser.first_name,
+            lastName: tgUser.last_name || null,
+            username: tgUser.username || null,
+            languageCode: tgUser.language_code || 'ru',
+            photoUrl: tgUser.photo_url || null,
+            isPremium: tgUser.is_premium || false,
+            isAdmin: isAdmin,
+            settings: { create: {} },
+            privacySettings: { create: {} },
+          },
+        });
+        return user;
+      }
+    }
+  } catch {
+    // Headers store might be unavailable outside request context
+  }
+
+  return null;
 }
 
 /**

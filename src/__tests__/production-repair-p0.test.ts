@@ -64,13 +64,28 @@ vi.mock('@/lib/telegram/bot', () => {
   };
 });
 
-vi.mock('@/lib/services/storage-service', () => ({
-  getStorage: vi.fn(() => ({
+const { mockStorage, MockStorageNotConfiguredError } = vi.hoisted(() => {
+  class MockStorageNotConfiguredError extends Error {
+    constructor(message = 'Хранилище SerkoGram не настроено (отсутствует BLOB_READ_WRITE_TOKEN)') {
+      super(message);
+      this.name = 'StorageNotConfiguredError';
+    }
+  }
+
+  const mockStorage = {
     upload: vi.fn().mockResolvedValue({
       url: 'https://storage.serkogram.app/media/test.jpg',
       path: 'media/test.jpg',
     }),
-  })),
+    isConfigured: vi.fn().mockReturnValue(true),
+  };
+
+  return { mockStorage, MockStorageNotConfiguredError };
+});
+
+vi.mock('@/lib/services/storage-service', () => ({
+  getStorage: vi.fn(() => mockStorage),
+  StorageNotConfiguredError: MockStorageNotConfiguredError,
 }));
 
 vi.mock('@/lib/services/owner-notification-service', () => ({
@@ -86,6 +101,11 @@ describe('SerkoGram P0 Production Repair Suite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.TELEGRAM_BOT_TOKEN = 'test_token_123';
+    mockStorage.upload.mockResolvedValue({
+      url: 'https://storage.serkogram.app/media/test.jpg',
+      path: 'media/test.jpg',
+    });
+    mockStorage.isConfigured.mockReturnValue(true);
   });
 
   describe('1. Canonical extractTelegramMedia', () => {
@@ -373,6 +393,46 @@ describe('SerkoGram P0 Production Repair Suite', () => {
           show_alert: true,
         })
       );
+    });
+  });
+
+  describe('6. Storage Token Check & Unconfigured Storage Error Handling', () => {
+    it('should return STORAGE_NOT_CONFIGURED error when storage is not configured', async () => {
+      mockStorage.isConfigured.mockReturnValue(false);
+
+      const res = await downloadAndStoreMedia('msg_unconfigured', 'f_1', 'fu_unconf', 'photo');
+
+      expect(res.success).toBe(false);
+      expect(res.status).toBe('STORAGE_ERROR');
+      expect(res.errorCode).toBe('STORAGE_NOT_CONFIGURED');
+      expect(res.error).toContain('BLOB_READ_WRITE_TOKEN');
+      expect(res.error).toContain('Хранилище SerkoGram не настроено');
+    });
+
+    it('should catch StorageNotConfiguredError during upload and return structured error', async () => {
+      mockStorage.isConfigured.mockReturnValue(true);
+      mockStorage.upload.mockRejectedValue(
+        new Error('Vercel Blob: No token found. Either configure the BLOB_READ_WRITE_TOKEN environment variable')
+      );
+
+      const bot = getBot();
+      (bot.api.getFile as any).mockResolvedValue({ file_path: 'photos/photo.jpg' });
+
+      const originalFetch = global.fetch;
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+      }) as any;
+
+      const res = await downloadAndStoreMedia('msg_token_missing', 'f_2', 'fu_missing', 'photo');
+
+      expect(res.success).toBe(false);
+      expect(res.status).toBe('STORAGE_ERROR');
+      expect(res.errorCode).toBe('STORAGE_NOT_CONFIGURED');
+      expect(res.error).toContain('BLOB_READ_WRITE_TOKEN');
+
+      global.fetch = originalFetch;
     });
   });
 });
