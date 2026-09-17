@@ -245,7 +245,7 @@ describe('Dot Command Executor (executeDotCommand)', () => {
     expect(resDirect.responseMessage).toContain('https://serkogram.vercel.app/archive/100200300');
   });
 
-  it('should execute animation commands (.p, .love, .love2, .-7)', async () => {
+  it('must cancel removed animation commands (.p, .love, .love2, .-7)', async () => {
     const baseCtx = {
       chatId: 'chat_123',
       telegramChatId: BigInt('100200300'),
@@ -258,24 +258,19 @@ describe('Dot Command Executor (executeDotCommand)', () => {
 
     // .p
     const resP = await executeDotCommand({ ...baseCtx, parsed: parseAnyCommand('.p') });
-    expect(resP.status).toBe('SUCCESS');
-    expect(resP.responseMessage).toContain('SERKOGRAM CHAT AUTOMATION');
+    expect(resP.status).toBe('CANCELLED');
 
     // .love
     const resLove = await executeDotCommand({ ...baseCtx, parsed: parseAnyCommand('.love') });
-    expect(resLove.status).toBe('SUCCESS');
-    expect(resLove.responseMessage).toContain('Я тебя люблю!');
+    expect(resLove.status).toBe('CANCELLED');
 
     // .love2
     const resLove2 = await executeDotCommand({ ...baseCtx, parsed: parseAnyCommand('.love2') });
-    expect(resLove2.status).toBe('SUCCESS');
-    expect(resLove2.responseMessage).toContain('Люблю тебя');
+    expect(resLove2.status).toBe('CANCELLED');
 
     // .-7
     const resMinus7 = await executeDotCommand({ ...baseCtx, parsed: parseAnyCommand('.-7') });
-    expect(resMinus7.status).toBe('SUCCESS');
-    expect(resMinus7.responseMessage).toContain('1000 - 7');
-    expect(resMinus7.responseMessage).toContain('7 - 7 = 0');
+    expect(resMinus7.status).toBe('CANCELLED');
   });
 
   it('should execute .tyuring test', async () => {

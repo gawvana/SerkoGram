@@ -331,9 +331,10 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
   const isOutgoing = cmdContext.isOwnerMessage;
   const ownerTelegramId = cmdContext.telegramOwnerId;
 
-  // Save message to archive if user settings allow
+  // Save message to archive if user settings allow (strict gating by autoSaveEnabled)
   let saved: any = null;
-  if (!settings || settings.saveMessages) {
+  const isAutoSaveAllowed = !settings || (settings.autoSaveEnabled && settings.saveMessages);
+  if (isAutoSaveAllowed) {
     saved = await saveMessage({
       chatId: chat.id,
       telegramMessageId: msg.message_id,
@@ -352,7 +353,7 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
     });
 
     // Process media asynchronously if user settings allow
-    if (saved && (!settings || settings.saveMedia)) {
+    if (saved && (!settings || (settings.autoSaveEnabled && settings.saveMedia))) {
       await processMediaFromMessage(msg, saved.id);
     }
   }
@@ -451,7 +452,7 @@ async function handleEditedBusinessMessage(msg: TgMessage): Promise<void> {
   const settings = await prisma.userSettings.findUnique({
     where: { userId: connection.userId },
   });
-  if (settings && !settings.saveEdits) return;
+  if (settings && (!settings.autoSaveEnabled || !settings.saveEdits)) return;
 
   const chat = await prisma.chat.findFirst({
     where: {
@@ -501,7 +502,7 @@ async function handleDeletedBusinessMessages(update: Update): Promise<void> {
   const settings = await prisma.userSettings.findUnique({
     where: { userId: connection.userId },
   });
-  if (settings && !settings.saveDeleted) return;
+  if (settings && (!settings.autoSaveEnabled || !settings.saveDeleted)) return;
 
   const chat = await prisma.chat.findFirst({
     where: {
@@ -680,8 +681,7 @@ async function handleCallbackQuery(update: Update): Promise<void> {
   if (
     query.data.startsWith('mute:') ||
     query.data.startsWith('panic:') ||
-    query.data.startsWith('tr:') ||
-    query.data.startsWith('agpt:')
+    query.data.startsWith('tr:')
   ) {
     const parts = query.data.split(':');
     const action = parts[0];

@@ -49,17 +49,6 @@
 | `rps` | `.\|/` | WORKING | Камень-ножницы-бумага |
 | `slot` | `.` | WORKING | Игровой автомат |
 
-### AI (6)
-
-| Command | Prefix | Status | Description |
-|---------|--------|--------|-------------|
-| `gpt` | `.\|/` | DISABLED | Задать вопрос нейросети. *Requires OPENAI_API_KEY* |
-| `a_gpt` | `.\|/` | DISABLED | Включить авто AI-ответы. *Requires OPENAI_API_KEY* |
-| `a_gpt_off` | `.\|/` | DISABLED | Отключить авто AI-ответы. *Requires OPENAI_API_KEY* |
-| `image` | `.\|/` | DISABLED | Генерация изображения. *Requires OPENAI_API_KEY* |
-| `fix` | `.` | WORKING | Исправление грамматики (regex-based) |
-| `stt` | `.` | DISABLED | Расшифровка голосового. *Requires Whisper/STT API* |
-
 ### Translation (2)
 
 | Command | Prefix | Status | Description |
@@ -67,46 +56,37 @@
 | `перевод` | `.` | WORKING | Автоперевод сообщений (MyMemory API) |
 | `tr` | `.` | WORKING | Перевод текста на указанный язык |
 
-### Animations (8)
+### Fun (16)
 
 | Command | Prefix | Status | Description |
 |---------|--------|--------|-------------|
-| `fco` | `.\|/` | WORKING | Анимированная цитата |
-| `p` | `.\|/` | WORKING | Пиксельный баннер SerkoGram |
-| `love` | `.` | WORKING | Сердечное признание |
-| `love2` | `.` | WORKING | Радужная анимация сердец |
-| `-7` | `.` | WORKING | Обратный отсчёт Tokyo Ghoul |
-| `heart` | `.` | WORKING | Текст с сердечками |
-| `plove` | `.` | WORKING | Пиксельный кролик |
-| `nospace` | `.` | WORKING | Удаление пробелов |
-
-### Fun (18)
-
-| Command | Prefix | Status | Description |
-|---------|--------|--------|-------------|
+| `fco` | `.` | WORKING | Случайная цитата и оформление |
+| `nospace` | `.` | WORKING | Удаление пробелов из текста |
 | `flip` | `.` | WORKING | Переворот текста вверх ногами |
 | `bubble` | `.` | WORKING | Текст в кружках |
 | `dumb` | `.` | WORKING | Чередование прописных/строчных |
 | `leet` | `.` | WORKING | Leetspeak стиль |
-| `zalgo` | `.` | WORKING | Диакритический хаос |
-| `spam` | `.\|/` | WORKING | Тест защиты от флуда |
-| `troll` | `.\|/` | WORKING | Шуточный ответ |
-| `a_troll` | `.\|/` | WORKING | Статус шуточного автоответчика |
-| `trol` | `.` | WORKING | Алиас .troll |
-| `tyuring` | `.` | WORKING | Шуточный диалог |
-| `fake` | `.` | WORKING | Стилизованная цитата |
-| `pet` | `.` | WORKING | Тёплая реакция |
-| `wanted` | `.` | WORKING | Постер "Разыскивается" |
+| `zalgo` | `.` | WORKING | Текст с искажениями Zalgo |
+| `translit` | `.` | WORKING | Транслитерация ru ↔ en |
+| `troll` | `.` | WORKING | Шуточный ответ |
+| `a_troll` | `.` | WORKING | Авто-троллинг статус |
+| `tyuring` | `.` | WORKING | Шуточный тест Тьюринга |
+| `spam` | `.` | WORKING | Защита от флуда и спама |
+| `fake` | `.` | WORKING | Имитация системного уведомления |
+| `pet` | `.` | WORKING | Текстовый питомец |
+| `wanted` | `.` | WORKING | Текстовый постер розыска |
 | `agro` | `.` | WORKING | Шуточный дерзкий ответ |
 | `shrug` | `.` | WORKING | ¯\\\_(ツ)\_/¯ |
 | `tableflip` | `.` | WORKING | (╯°□°)╯︵ ┻━┻ |
 | `unflip` | `.` | WORKING | ┬─┬ノ( º \_ ºノ) |
 | `quote` | `.` | WORKING | Мотивирующая цитата дня |
 
-### Utility (12)
+### Utility (14)
 
 | Command | Prefix | Status | Description |
 |---------|--------|--------|-------------|
+| `fix` | `.` | WORKING | Корректор текста (исправление пунктуации и регистра) |
+| `stt` | `.` | DISABLED | Расшифровка голосового. *Requires Whisper/STT API* |
 | `spoiler` | `.` | WORKING | Скрытый текст спойлера |
 | `warn` | `.` | WORKING | Предупреждение участнику (DB-persisted) |
 | `mute` | `.` | WORKING | Ограничение сообщений (DB state machine) |

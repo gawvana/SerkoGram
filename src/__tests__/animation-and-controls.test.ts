@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeDotCommand, ExecuteDotCommandContext } from '@/lib/commands/executor';
 import { parseAnyCommand } from '@/lib/commands/parser';
-import { animationService } from '@/lib/services/animation-service';
 import { toFlip, toBubble, toSpoiler, toZalgo } from '@/lib/commands/text-effects';
 import { getCommand, COMMANDS_REGISTRY } from '@/lib/telegram/commands';
 import { chatAutomation } from '@/lib/services/connection-service';
@@ -68,47 +67,9 @@ vi.mock('@/lib/telegram/bot', () => ({
   }),
 }));
 
-describe('AnimationEngine & Interactive Control UX Tests', () => {
+describe('TextEffects & Interactive Control UX Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it('AnimationEngine generates correct preset frames for animated commands', () => {
-    const pFrames = animationService.getPresetFrames('p');
-    expect(pFrames.length).toBeGreaterThanOrEqual(4);
-    expect(pFrames[0].text).toContain('0% INITIALIZING');
-    expect(pFrames[pFrames.length - 1].text).toContain('100% ONLINE');
-
-    const loveFrames = animationService.getPresetFrames('love', 'Тест');
-    expect(loveFrames.length).toBe(3);
-    expect(loveFrames[2].text).toContain('Тест');
-
-    const minus7Frames = animationService.getPresetFrames('-7');
-    expect(minus7Frames.length).toBe(3);
-    expect(minus7Frames[2].text).toContain('7 - 7 = 0');
-  });
-
-  it('AnimationEngine starts, runs and can be cancelled without errors', async () => {
-    const frames = [
-      { text: 'Frame 1', delayMs: 10 },
-      { text: 'Frame 2', delayMs: 10 },
-    ];
-
-    const job = await animationService.start({
-      animationId: 'test_anim_1',
-      chatId: 'chat_test',
-      telegramChatId: BigInt('100200300'),
-      messageId: 500,
-      ownerTelegramId: BigInt('111222333'),
-      frames,
-    });
-
-    expect(job.status).toBe('RUNNING');
-    expect(job.frames.length).toBe(2);
-
-    // Test cancellation
-    animationService.cancel('chat_test', 500);
-    expect(job.status).toBe('CANCELLED');
   });
 
   it('Text effects: toSpoiler outputs native Telegram HTML tg-spoiler', () => {
@@ -189,19 +150,17 @@ describe('AnimationEngine & Interactive Control UX Tests', () => {
     expect(mockDeleteMessage).toHaveBeenCalledWith('100200300', 888);
   });
 
-  it('new text effect commands (.spoiler, .heart, .plove, .flip, .bubble, .dumb, .leet, .zalgo) are in registry and execute', async () => {
+  it('text effect commands (.spoiler, .flip, .bubble, .dumb, .leet, .zalgo, .nospace) are in registry and execute', async () => {
     const spoilerCmd = getCommand('spoiler');
     expect(spoilerCmd).toBeDefined();
     expect(spoilerCmd?.category).toBe('utility');
 
-    const heartCmd = getCommand('heart');
-    expect(heartCmd).toBeDefined();
-
-    const ploveCmd = getCommand('plove');
-    expect(ploveCmd).toBeDefined();
-
     const flipCmd = getCommand('flip');
     expect(flipCmd).toBeDefined();
+
+    const nospaceCmd = getCommand('nospace');
+    expect(nospaceCmd).toBeDefined();
+    expect(nospaceCmd?.category).toBe('fun');
 
     // Execute .spoiler
     const resSpoiler = await executeDotCommand({
@@ -216,5 +175,33 @@ describe('AnimationEngine & Interactive Control UX Tests', () => {
     });
     expect(resSpoiler.status).toBe('SUCCESS');
     expect(resSpoiler.responseMessage).toContain('<tg-spoiler>секрет</tg-spoiler>');
+  });
+
+  it('.mute rejects invalid duration argument with clear error message', async () => {
+    const resInvalid = await executeDotCommand({
+      parsed: parseAnyCommand('.mute abc'),
+      chatId: 'chat_test',
+      telegramChatId: BigInt('100200300'),
+      userId: 'user_1',
+      callerTelegramId: BigInt('111222333'),
+      isOwner: true,
+      messageId: 102,
+      isDirectBotChat: false,
+    });
+    expect(resInvalid.status).toBe('SUCCESS');
+    expect(resInvalid.responseMessage).toContain('Неверная длительность');
+
+    const resOutOfRange = await executeDotCommand({
+      parsed: parseAnyCommand('.mute 9999'),
+      chatId: 'chat_test',
+      telegramChatId: BigInt('100200300'),
+      userId: 'user_1',
+      callerTelegramId: BigInt('111222333'),
+      isOwner: true,
+      messageId: 103,
+      isDirectBotChat: false,
+    });
+    expect(resOutOfRange.status).toBe('SUCCESS');
+    expect(resOutOfRange.responseMessage).toContain('Недопустимая длительность');
   });
 });

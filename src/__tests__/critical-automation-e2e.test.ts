@@ -184,7 +184,7 @@ describe('CRITICAL AUTOMATION E2E: Full Telegram Flow & .mute Pipeline', () => {
 
   it('verifies command registry startup integrity with 0 duplicates and valid handlers', () => {
     expect(() => validateCommandRegistry()).not.toThrow();
-    expect(UNIFIED_COMMANDS.length).toBe(72);
+    expect(UNIFIED_COMMANDS.length).toBe(62);
 
     const muteDef = getCommandByName('mute');
     expect(muteDef).toBeDefined();
@@ -199,6 +199,14 @@ describe('CRITICAL AUTOMATION E2E: Full Telegram Flow & .mute Pipeline', () => {
     expect(getCommandByName('dox')).toBeUndefined();
     expect(getCommandByName('deanon')).toBeUndefined();
     expect(getCommandByName('osint')).toBeUndefined();
+
+    // Removed AI and animation commands must NEVER be in registry
+    expect(getCommandByName('gpt')).toBeUndefined();
+    expect(getCommandByName('a_gpt')).toBeUndefined();
+    expect(getCommandByName('image')).toBeUndefined();
+    expect(getCommandByName('love')).toBeUndefined();
+    expect(getCommandByName('p')).toBeUndefined();
+    expect(getCommandByName('-7')).toBeUndefined();
   });
 
   it('correctly resolves context distinguishing owner from interlocutor and text from caption', () => {

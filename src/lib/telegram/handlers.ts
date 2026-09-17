@@ -3,7 +3,7 @@
 // ============================================================
 
 import { getBot } from './bot';
-import { COMMANDS_REGISTRY, isAiProviderConfigured } from './commands';
+import { COMMANDS_REGISTRY } from './commands';
 import { renderTttKeyboard, handleRpsGame } from './games';
 import type { ParsedCommand } from './parser';
 import type { Message as TgMessage, Update } from 'grammy/types';
@@ -230,68 +230,14 @@ export async function executeCommand(msg: TgMessage, parsed: ParsedCommand): Pro
       break;
     }
 
-    case 'gpt':
-    case 'a_gpt':
-    case 'a_gpt_off':
-    case 'image': {
-      if (!isAiProviderConfigured()) {
-        await bot.api.sendMessage(
-          chatId,
-          `🤖 <b>Нейросеть SerkoGram</b>\n\n` +
-            `Для работы функций искусственного интеллекта требуется подключение API-ключа нейросети (OPENAI_API_KEY).\n\n` +
-            `Функция временно отключена администратором.`,
-          { parse_mode: 'HTML' }
-        );
-      } else {
-        await bot.api.sendMessage(
-          chatId,
-          `🤖 Функция нейросети активна. Обработка запроса: <i>${escapeHtml(parsed.rawArguments || 'без параметров')}</i>`,
-          { parse_mode: 'HTML' }
-        );
-      }
-      break;
-    }
-
     case 'save': {
-      if (msg.reply_to_message) {
-        try {
-          const { saveEphemeralMedia } = await import('@/lib/services/ephemeral-service');
-          // In direct bot chat, we don't have a DB chat record for the bot DM
-          // but we can still attempt to save the replied media
-          const res = await saveEphemeralMedia(
-            `bot_dm_${chatId}`,
-            msg.reply_to_message.message_id,
-            `tg_${userId}`,
-            msg.reply_to_message
-          );
-          if (res.success) {
-            await bot.api.sendMessage(
-              chatId,
-              `✅ <b>Сохранено в архив!</b>\n${res.message}`,
-              { parse_mode: 'HTML' }
-            );
-          } else {
-            await bot.api.sendMessage(
-              chatId,
-              `⚠️ <b>Не удалось сохранить:</b> ${escapeHtml(res.message)}`,
-              { parse_mode: 'HTML' }
-            );
-          }
-        } catch (saveErr: any) {
-          console.error('[Handler] /save error:', saveErr);
-          await bot.api.sendMessage(
-            chatId,
-            `❌ Ошибка при сохранении: ${escapeHtml(saveErr?.message || 'Неизвестная ошибка')}`,
-            { parse_mode: 'HTML' }
-          );
-        }
-      } else {
-        await bot.api.sendMessage(
-          chatId,
-          `ℹ️ Команда <code>/save</code> используется <b>в ответ на сообщение</b>, которое вы хотите принудительно сохранить в архив.`,
-          { parse_mode: 'HTML' }
-        );
-      }
+      await bot.api.sendMessage(
+        chatId,
+        `💡 <b>Команда .save для чатов Telegram Business</b>\n\n` +
+          `Команда <code>.save</code> (или <code>/save</code>) предназначена для использования <b>внутри управляемых диалогов Telegram Business</b> в ответ на медиа (фото, видео, голосовые, кружки, документы, исчезающие медиа).\n\n` +
+          `Чтобы сохранить медиа, отправьте <code>.save</code> в ответ на нужное сообщение в вашем подключённом бизнес-чате.`,
+        { parse_mode: 'HTML' }
+      );
       break;
     }
 

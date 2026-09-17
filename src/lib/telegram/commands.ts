@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // SerkoGram — Telegram Bot Commands Bridge
 // Re-exports from single source of truth: @/lib/commands/registry
 // ============================================================
@@ -8,7 +8,6 @@ import {
   UnifiedCommandDefinition,
   CommandCategory,
   COMMAND_CATEGORIES,
-  isAiProviderConfigured,
 } from '@/lib/commands/registry';
 
 export * from '@/lib/commands/registry';

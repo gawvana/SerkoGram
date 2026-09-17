@@ -11,18 +11,22 @@ export async function POST(req: Request) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    const update = await req.json();
-
-    // Reliably process update without returning 500 retry storms
+    let update: any;
     try {
-      await processUpdate(update);
-    } catch (procError) {
-      console.error('[Webhook] Update processing failed (handled safely):', procError);
+      update = await req.json();
+    } catch {
+      return new NextResponse('Bad Request: Invalid JSON', { status: 400 });
     }
 
-    return new NextResponse('OK', { status: 200 });
+    try {
+      await processUpdate(update);
+      return new NextResponse('OK', { status: 200 });
+    } catch (procError) {
+      console.error('[Webhook] Update processing failed (server error):', procError);
+      return new NextResponse('Internal Server Error', { status: 500 });
+    }
   } catch (error) {
-    console.error('[Webhook] Request parsing error:', error);
-    return new NextResponse('OK', { status: 200 });
+    console.error('[Webhook] Request error:', error);
+    return new NextResponse('Internal Server Error', { status: 500 });
   }
 }

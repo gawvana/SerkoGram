@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   COMMANDS_REGISTRY,
   COMMAND_CATEGORIES,
@@ -25,10 +25,6 @@ describe('Command Registry (Single Source of Truth)', () => {
       'coin',
       'ttt',
       'rps',
-      'gpt',
-      'a_gpt',
-      'a_gpt_off',
-      'image',
       'save',
       'гс',
       'fco',
@@ -54,15 +50,15 @@ describe('Command Registry (Single Source of Truth)', () => {
     }
   });
 
-  it('should validate AI commands have disabledReason if disabled', () => {
-    const aiCommands = getCommandsByCategory('ai');
-    expect(aiCommands.length).toBeGreaterThan(0);
+  it('must NEVER include AI or animation commands or categories', () => {
+    const bannedCategories = ['ai', 'animations'];
+    for (const cat of COMMAND_CATEGORIES) {
+      expect(bannedCategories.includes(cat.id)).toBe(false);
+    }
 
-    for (const cmd of aiCommands) {
-      if (!cmd.enabled) {
-        expect(cmd.disabledReason).toBeDefined();
-        expect(cmd.disabledReason!.length).toBeGreaterThan(5);
-      }
+    const bannedCommands = ['gpt', 'a_gpt', 'a_gpt_off', 'image', 'love', 'love2', '-7', 'heart', 'plove'];
+    for (const cmd of bannedCommands) {
+      expect(getCommand(cmd), `Expected ${cmd} to not exist`).toBeUndefined();
     }
   });
 

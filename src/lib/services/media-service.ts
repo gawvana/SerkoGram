@@ -249,9 +249,14 @@ export async function downloadAndStoreMedia(
   const isVo = metadata?.isViewOnce ?? false;
 
   try {
-    // 1. Check idempotency: already downloaded in DB
+    // 1. Check idempotency: already downloaded in DB for this specific message
     const existing = await prisma.messageMedia.findUnique({
-      where: { id: fileUniqueId },
+      where: {
+        messageId_fileUniqueId: {
+          messageId,
+          fileUniqueId,
+        },
+      },
     }).catch(() => null);
 
     if (existing && existing.isDownloaded && existing.storageUrl) {
@@ -261,6 +266,70 @@ export async function downloadAndStoreMedia(
         mediaId: existing.id,
         storageUrl: existing.storageUrl,
         storagePath: existing.storagePath || undefined,
+      };
+    }
+
+    // 1b. Check if already stored for another message (cross-message reuse)
+    const existingAnywhere =
+      typeof prisma?.messageMedia?.findFirst === 'function'
+        ? await prisma.messageMedia
+            .findFirst({
+              where: {
+                fileUniqueId,
+                isDownloaded: true,
+                storageUrl: { not: null },
+              },
+            })
+            .catch(() => null)
+        : null;
+
+    if (existingAnywhere && existingAnywhere.storageUrl) {
+      const reused = await prisma.messageMedia.upsert({
+        where: {
+          messageId_fileUniqueId: {
+            messageId,
+            fileUniqueId,
+          },
+        },
+        create: {
+          messageId,
+          telegramFileId: fileId,
+          fileUniqueId,
+          mediaType,
+          fileName: metadata?.fileName || existingAnywhere.fileName,
+          mimeType: metadata?.mimeType || existingAnywhere.mimeType,
+          fileSize: metadata?.fileSize ?? existingAnywhere.fileSize,
+          width: metadata?.width ?? existingAnywhere.width,
+          height: metadata?.height ?? existingAnywhere.height,
+          duration: metadata?.duration ?? existingAnywhere.duration,
+          storagePath: existingAnywhere.storagePath,
+          storageUrl: existingAnywhere.storageUrl,
+          isDownloaded: true,
+          isEphemeral: isEph,
+          isViewOnce: isVo,
+          ttlSeconds: metadata?.ttlSeconds,
+          archiveStatus: isEph ? 'ARCHIVED' : 'AVAILABLE',
+          archivedAt: isEph ? new Date() : undefined,
+          ephemeralDetectedAt: isEph ? new Date() : undefined,
+        },
+        update: {
+          storagePath: existingAnywhere.storagePath,
+          storageUrl: existingAnywhere.storageUrl,
+          isDownloaded: true,
+          isEphemeral: isEph,
+          isViewOnce: isVo,
+          ttlSeconds: metadata?.ttlSeconds,
+          archiveStatus: isEph ? 'ARCHIVED' : 'AVAILABLE',
+          archivedAt: isEph ? new Date() : undefined,
+        },
+      });
+
+      return {
+        success: true,
+        status: 'SAVED',
+        mediaId: reused.id,
+        storageUrl: reused.storageUrl || existingAnywhere.storageUrl,
+        storagePath: reused.storagePath || existingAnywhere.storagePath || undefined,
       };
     }
 
@@ -377,7 +446,10 @@ export async function downloadAndStoreMedia(
     try {
       const savedMedia = await prisma.messageMedia.upsert({
         where: {
-          id: fileUniqueId,
+          messageId_fileUniqueId: {
+            messageId,
+            fileUniqueId,
+          },
         },
         create: {
           messageId,
@@ -474,7 +546,12 @@ async function recordFailedMedia(
 
   try {
     await prisma.messageMedia.upsert({
-      where: { id: fileUniqueId },
+      where: {
+        messageId_fileUniqueId: {
+          messageId,
+          fileUniqueId,
+        },
+      },
       create: {
         messageId,
         telegramFileId: fileId,

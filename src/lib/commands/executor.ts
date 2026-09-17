@@ -4,12 +4,11 @@
 
 import { prisma } from '@/lib/db';
 import { getBot } from '@/lib/telegram/bot';
-import { getCommandByName, isAiProviderConfigured } from './registry';
+import { getCommandByName } from './registry';
 import { resolveReplyContext } from './reply-context';
 import { saveEphemeralMedia } from '@/lib/services/ephemeral-service';
 import { ownerNotificationService } from '@/lib/services/owner-notification-service';
 import { chatAutomation, getBusinessRights } from '@/lib/services/connection-service';
-import { animationService } from '@/lib/services/animation-service';
 import {
   toFlip,
   toBubble,
@@ -180,7 +179,27 @@ export async function executeDotCommand(
     return { status: 'CANCELLED', errorCode: 'UNAUTHORIZED_CALLER' };
   }
 
-  // 4. Create persistent command execution record
+  // 4a. Check idempotency: if already executed successfully, do not re-run
+  const existingExec =
+    typeof prisma?.commandExecution?.findUnique === 'function'
+      ? await prisma.commandExecution
+          .findUnique({
+            where: {
+              userId_chatId_telegramMessageId: {
+                userId,
+                chatId,
+                telegramMessageId: messageId,
+              },
+            },
+          })
+          .catch(() => null)
+      : null;
+
+  if (existingExec?.status === 'SUCCESS') {
+    return { status: 'SUCCESS' };
+  }
+
+  // 4b. Create persistent command execution record
   const execution = await prisma.commandExecution.upsert({
     where: {
       userId_chatId_telegramMessageId: {
@@ -241,11 +260,11 @@ export async function executeDotCommand(
         responseText =
           `⚡ <b>Каталог команд SerkoGram</b>\n\n` +
           `Вам доступны более 30 команд прямо в этом чате:\n` +
-          `• <b>Текстовые эффекты:</b> .flip, .bubble, .nospace, .dumb, .leet, .zalgo, .spoiler, .heart, .plove\n` +
-          `• <b>Развлечения:</b> .coin, .ttt, .rps, .art, .pet, .wanted, .agro, .fake, .dem\n` +
+          `• <b>Текстовые эффекты:</b> .flip, .bubble, .nospace, .dumb, .leet, .zalgo, .spoiler\n` +
+          `• <b>Развлечения:</b> .coin, .ttt, .rps, .art, .pet, .wanted, .agro, .fake, .dem, .fco\n` +
           `• <b>Утилиты и модерация:</b> .warn, .mute, .panic, .snos, .typing, .timer\n` +
           `• <b>Медиа и архивация:</b> .save, .гс, .vnote, .vreverse, .archive, .deleted, .media, .search\n` +
-          `• <b>Нейросети и перевод:</b> .gpt, .fix, .stt, .tr, .перевод\n\n` +
+          `• <b>Перевод и текст:</b> .fix, .stt, .tr, .перевод\n\n` +
           (appUrl ? `📖 Полный список в приложении: ${appUrl}/commands` : '');
         break;
       }
@@ -347,23 +366,8 @@ export async function executeDotCommand(
       }
 
       // ------------------------------------------------------------
-      // НЕЙРОСЕТИ, ТЕКСТ И ПЕРЕВОД
+      // ТЕКСТ И ПЕРЕВОД
       // ------------------------------------------------------------
-      case 'gpt':
-      case 'a_gpt':
-      case 'a_gpt_off':
-      case 'image': {
-        if (!isAiProviderConfigured()) {
-          responseText =
-            `🤖 <b>Нейросеть SerkoGram</b>\n\n` +
-            `AI-функция пока не настроена (требуется подключение OPENAI_API_KEY).\n` +
-            `Команда временно работает в режиме ожидания ключа.`;
-        } else {
-          responseText = `🤖 Запрос принят в обработку: <i>${escapeHtml(parsed.rawArguments || 'без параметров')}</i>`;
-        }
-        break;
-      }
-
       case 'fix': {
         const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
         if (!targetText) {
@@ -683,11 +687,8 @@ export async function executeDotCommand(
 
       case 'unmute':
       case 'mute': {
-        const durationArg = parsed.rawArguments?.trim() || '15';
-        const isOff = durationArg.toLowerCase() === 'off' || parsed.command === 'unmute';
-        const minutes = parseInt(durationArg, 10);
-        const safeMins = isNaN(minutes) || minutes < 1 ? 15 : Math.min(minutes, 1440);
-        const muteUntil = new Date(Date.now() + safeMins * 60 * 1000);
+        const rawArg = parsed.rawArguments?.trim() || '';
+        const isOff = rawArg.toLowerCase() === 'off' || parsed.command === 'unmute';
         const targetOwnerId = (ctx.ownerTelegramId || ctx.callerTelegramId).toString();
 
         // Toggle off if already muted and user sends .mute off or .unmute
@@ -708,6 +709,26 @@ export async function executeDotCommand(
             ],
           };
         } else {
+          let safeMins = 15;
+          if (rawArg) {
+            if (!/^\d+$/.test(rawArg)) {
+              responseText =
+                `❌ <b>Неверная длительность</b>\n\n` +
+                `Укажите число минут от 1 до 1440 или <code>off</code> для снятия ограничения.\n` +
+                `Пример: <code>.mute 30</code> или <code>.mute off</code>`;
+              break;
+            }
+            const parsedMins = parseInt(rawArg, 10);
+            if (parsedMins < 1 || parsedMins > 1440) {
+              responseText =
+                `❌ <b>Недопустимая длительность</b>\n\n` +
+                `Длительность мута должна быть от 1 до 1440 минут (24 часа).`;
+              break;
+            }
+            safeMins = parsedMins;
+          }
+
+          const muteUntil = new Date(Date.now() + safeMins * 60 * 1000);
           await chatAutomation.setChatSettings(chatId, {
             muteEnabled: true,
             muteUntil: muteUntil,
@@ -1091,53 +1112,6 @@ export async function executeDotCommand(
         break;
       }
 
-      case 'p': {
-        responseText =
-          `⚡ <b>SERKOGRAM CHAT AUTOMATION</b>\n\n` +
-          `<pre>` +
-          `███████╗███████╗██████╗ ██╗  ██╗ ██████╗ \n` +
-          `██╔════╝██╔════╝██╔══██╗██║ ██╔╝██╔═══██╗\n` +
-          `███████╗█████╗  ██████╔╝█████╔╝ ██║   ██║\n` +
-          `╚════██║██╔══╝  ██╔══██╗██╔═██╗ ██║   ██║\n` +
-          `███████║███████╗██║  ██║██║  ██╗╚██████╔╝\n` +
-          `╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ \n` +
-          `[████████████████████] 100% ONLINE</pre>`;
-        break;
-      }
-
-      case 'love': {
-        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
-        responseText =
-          `❤️🧡💛💚💙💜\n` +
-          `💕 <b>${escapeHtml(targetText || 'Я тебя люблю!')}</b> 💕\n` +
-          `💜💙💚💛🧡❤️`;
-        if (replyToMessageId) replyToId = replyToMessageId;
-        break;
-      }
-
-      case 'love2': {
-        const targetText = await getTargetText(parsed.rawArguments, chatId, replyToMessageId, replyToMessageObj);
-        responseText =
-          `🤍🤎💜💙💚💛🧡❤️\n` +
-          `   ✨ <b>${escapeHtml(targetText || 'Люблю тебя')}</b> ✨\n` +
-          `❤️🧡💛💚💙💜🤎🤍`;
-        if (replyToMessageId) replyToId = replyToMessageId;
-        break;
-      }
-
-      case '-7': {
-        responseText =
-          `🩸 <b>1000 - 7</b>\n\n` +
-          `<code>1000 - 7 = 993\n` +
-          `993 - 7 = 986\n` +
-          `986 - 7 = 979\n` +
-          `979 - 7 = 972\n` +
-          `...\n` +
-          `7 - 7 = 0</code>\n\n` +
-          `<i>«Я тот, кто пожирает гулей...»</i> 👁️`;
-        break;
-      }
-
       case 'tyuring': {
         responseText =
           `🧠 <b>Тест Тьюринга</b>\n\n` +
@@ -1275,26 +1249,6 @@ export async function executeDotCommand(
           reply_markup: customReplyMarkup,
         });
         sentMessageId = sent.message_id;
-
-        // Animation execution
-        if (sentMessageId && ['p', 'love', 'love2', '-7', 'heart', 'plove'].includes(parsed.command)) {
-          try {
-            const frames = animationService.getPresetFrames(parsed.command, parsed.rawArguments);
-            if (frames.length > 1) {
-              animationService.start({
-                animationId: `${chatId}:${sentMessageId}`,
-                chatId,
-                telegramChatId,
-                messageId: sentMessageId,
-                ownerTelegramId: ctx.ownerTelegramId || ctx.callerTelegramId,
-                businessConnectionId,
-                frames,
-              });
-            }
-          } catch (animErr) {
-            console.warn('[Animation] Could not start animation sequence:', animErr);
-          }
-        }
       } catch (tgErr: any) {
         // If bot blocked or cannot send message, log warning
         console.warn('[DotCommand] Could not send reply to chat:', telegramChatId.toString(), tgErr.description);

@@ -347,6 +347,7 @@ model MessageMedia {
 
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
+  @@unique([messageId, fileUniqueId])
   @@index([messageId])
   @@index([fileUniqueId])
   @@index([isEphemeral])

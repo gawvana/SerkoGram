@@ -22,29 +22,30 @@ import { getStorage } from '@/lib/services/storage-service';
 vi.mock('@/lib/db', () => ({
   prisma: {
     messageMedia: {
-      findUnique: vi.fn(),
-      findFirst: vi.fn(),
-      upsert: vi.fn(),
-      update: vi.fn(),
+      findUnique: vi.fn().mockResolvedValue(null),
+      findFirst: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({ id: 'mm_1' }),
+      update: vi.fn().mockResolvedValue({ id: 'mm_1' }),
     },
     message: {
-      findUnique: vi.fn(),
-      upsert: vi.fn(),
-      create: vi.fn(),
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({ id: 'msg_1' }),
+      create: vi.fn().mockResolvedValue({ id: 'msg_1' }),
     },
     chat: {
-      findUnique: vi.fn(),
+      findUnique: vi.fn().mockResolvedValue(null),
       update: vi.fn().mockResolvedValue({}),
     },
     chatAutomationSettings: {
-      findUnique: vi.fn(),
-      upsert: vi.fn(),
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({}),
     },
     commandExecution: {
       create: vi.fn(),
       update: vi.fn().mockResolvedValue({}),
       upsert: vi.fn().mockResolvedValue({ id: 'exec_1' }),
-      findFirst: vi.fn(),
+      findFirst: vi.fn().mockResolvedValue(null),
+      findUnique: vi.fn().mockResolvedValue(null),
     },
   },
 }));
@@ -183,6 +184,7 @@ describe('SerkoGram P0 Production Repair Suite', () => {
 
     it('should return TELEGRAM_FILE_ERROR if getFile fails', async () => {
       (prisma.messageMedia.findUnique as any).mockResolvedValue(null);
+      (prisma.messageMedia.findFirst as any).mockResolvedValue(null);
       const bot = getBot();
       (bot.api.getFile as any).mockRejectedValue(new Error('Bad Request: file is too big'));
 
@@ -195,6 +197,7 @@ describe('SerkoGram P0 Production Repair Suite', () => {
 
     it('should return SAVED and storage URL on successful download and upload', async () => {
       (prisma.messageMedia.findUnique as any).mockResolvedValue(null);
+      (prisma.messageMedia.findFirst as any).mockResolvedValue(null);
       const bot = getBot();
       (bot.api.getFile as any).mockResolvedValue({ file_path: 'photos/file_0.jpg' });
 

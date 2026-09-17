@@ -33,7 +33,6 @@ Configure the following variables in your `.env` (local) and Vercel Project Sett
 | `SESSION_SECRET` | High-entropy secret for cookie/JWT signing (≥32 chars) | **Yes** | `7d8f9e0a1b2c3d4e5f6a7b8c9d0e1f2a` |
 | `BLOB_READ_WRITE_TOKEN` | Read/write token for Vercel Blob media storage | **Yes** | `vercel_blob_rw_...` |
 | `ADMIN_TELEGRAM_ID` | Telegram numeric ID of superadmin | Recommended | `123456789` |
-| `OPENAI_API_KEY` | Optional OpenAI API key (for `.gpt`, `.image`) | Optional | `sk-...` |
 
 ---
 

@@ -290,7 +290,17 @@ export class ChatAutomationAdapter implements ConnectionAdapter {
         const settings = await prisma.chatAutomationSettings.findUnique({
           where: { chatId },
         });
-        if (settings) return settings;
+        if (settings) {
+          // Auto-expire mute if muteUntil has passed
+          if (settings.muteEnabled && settings.muteUntil && new Date(settings.muteUntil) < new Date()) {
+            await prisma.chatAutomationSettings.update({
+              where: { chatId },
+              data: { muteEnabled: false, muteUntil: null },
+            }).catch(() => null);
+            return { ...settings, muteEnabled: false, muteUntil: null };
+          }
+          return settings;
+        }
       }
     } catch (e) {
       if (process.env.NODE_ENV === 'production') {

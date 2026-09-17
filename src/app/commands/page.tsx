@@ -18,8 +18,6 @@ import {
   Info,
   Archive,
   Gamepad2,
-  Bot,
-  Film,
   Image as ImageIcon,
   Smile,
   Languages,
@@ -80,12 +78,8 @@ export default function CommandsPage() {
         return Archive;
       case 'games':
         return Gamepad2;
-      case 'ai':
-        return Bot;
       case 'translation':
         return Languages;
-      case 'animations':
-        return Film;
       case 'media':
         return ImageIcon;
       case 'fun':

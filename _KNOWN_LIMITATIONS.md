@@ -44,7 +44,6 @@ Certain legacy features requested in userbot scripts cannot be implemented via t
 | `.autovoice` | Continuous Audio Record Status | Same as above; MTProto-only. Status: **DISABLED**. |
 | `.vnote` / `.vreverse` | Video Note / Video Reverse | Requires FFmpeg binary processing. Not available in Vercel serverless environment. Status: **DISABLED**. |
 | `.stt` / `.гс` | Speech-to-Text | Requires external Whisper or Google STT API key. Status: **DISABLED** (unless STT provider configured). |
-| `.gpt` / `.image` | AI Generation | Requires `OPENAI_API_KEY` or `GEMINI_API_KEY`. Returns friendly warning if not configured. |
 | `.dox` / `.deanon` / `.osint` | Deanonymization | **PERMANENTLY BANNED** by security and privacy policy. |
 
 ---
