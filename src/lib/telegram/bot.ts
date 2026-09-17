@@ -13,7 +13,7 @@ let botInstance: Bot | null = null;
 export function getBot(): Bot {
   if (botInstance) return botInstance;
 
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const token = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN;
   if (!token) {
     throw new Error('TELEGRAM_BOT_TOKEN environment variable is not set');
   }
@@ -28,7 +28,7 @@ import crypto from 'crypto';
  * Verify the webhook secret token header using constant-time comparison.
  */
 export function verifyWebhookSecret(request: Request): boolean {
-  const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET;
   if (!secret) return true; // No secret configured — skip check
 
   const headerSecret = request.headers.get('x-telegram-bot-api-secret-token');

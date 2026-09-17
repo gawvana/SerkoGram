@@ -37,7 +37,10 @@ export class StorageNotConfiguredError extends Error {
  * Diagnostic helper to check storage configuration
  */
 export function getStorageDiagnostics() {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const token = process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_BLOB_READ_WRITE_TOKEN;
+  if (!process.env.BLOB_READ_WRITE_TOKEN && token) {
+    process.env.BLOB_READ_WRITE_TOKEN = token;
+  }
   const configured = Boolean(token && token.trim().length > 0);
   return {
     provider: 'vercel-blob',
@@ -56,7 +59,10 @@ export function getStorageDiagnostics() {
  */
 export class VercelBlobStorage implements StorageService {
   isConfigured(): boolean {
-    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    const token = process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_BLOB_READ_WRITE_TOKEN;
+    if (!process.env.BLOB_READ_WRITE_TOKEN && token) {
+      process.env.BLOB_READ_WRITE_TOKEN = token;
+    }
     return Boolean(token && token.trim().length > 0);
   }
 

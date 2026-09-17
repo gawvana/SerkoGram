@@ -158,13 +158,29 @@ export async function getAuthenticatedUser(): Promise<User | null> {
   return null;
 }
 
+export class UnauthorizedError extends Error {
+  status = 401;
+  constructor(message = 'Unauthorized') {
+    super(message);
+    this.name = 'UnauthorizedError';
+  }
+}
+
+export class ForbiddenError extends Error {
+  status = 403;
+  constructor(message = 'Forbidden') {
+    super(message);
+    this.name = 'ForbiddenError';
+  }
+}
+
 /**
  * Require authentication — throws if not authenticated
  */
 export async function requireAuth(): Promise<User> {
   const user = await getAuthenticatedUser();
   if (!user) {
-    throw new Error('Unauthorized');
+    throw new UnauthorizedError('Unauthorized');
   }
   return user;
 }
@@ -175,7 +191,7 @@ export async function requireAuth(): Promise<User> {
 export async function requireAdmin(): Promise<User> {
   const user = await requireAuth();
   if (!user.isAdmin) {
-    throw new Error('Forbidden');
+    throw new ForbiddenError('Forbidden');
   }
   return user;
 }

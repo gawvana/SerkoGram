@@ -303,7 +303,7 @@ export class ChatAutomationAdapter implements ConnectionAdapter {
         }
       }
     } catch (e) {
-      if (process.env.NODE_ENV === 'production') {
+      if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
         console.error('[PRODUCTION DATABASE ERROR] Failed to load chat settings from DB:', e);
         throw e;
       }
@@ -337,7 +337,7 @@ export class ChatAutomationAdapter implements ConnectionAdapter {
         });
       }
     } catch (e) {
-      if (process.env.NODE_ENV === 'production') {
+      if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
         console.error('[PRODUCTION DATABASE ERROR] Failed to persist chat settings to DB:', e);
         throw e;
       }

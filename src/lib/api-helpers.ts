@@ -10,7 +10,12 @@ export function apiSuccess<T>(data: T, status = 200): NextResponse<ApiResponse<T
 }
 
 export function apiError(error: string, status = 400): NextResponse<ApiResponse> {
-  return NextResponse.json({ success: false, error }, { status });
+  const finalStatus = (error === 'Unauthorized' && status === 500)
+    ? 401
+    : (error === 'Forbidden' && status === 500)
+    ? 403
+    : status;
+  return NextResponse.json({ success: false, error }, { status: finalStatus });
 }
 
 export function apiUnauthorized(): NextResponse<ApiResponse> {

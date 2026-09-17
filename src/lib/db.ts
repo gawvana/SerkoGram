@@ -325,6 +325,15 @@ function createInMemoryStore(): any {
 
 // Instantiate database client
 function createDbClient(): PrismaClient {
+  const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL;
+  if (!process.env.DATABASE_URL && dbUrl) {
+    process.env.DATABASE_URL = dbUrl;
+  }
+  const directUrl = process.env.DIRECT_URL || process.env.POSTGRES_URL_NON_POOLING || process.env.DATABASE_URL_UNPOOLED;
+  if (!process.env.DIRECT_URL && directUrl) {
+    process.env.DIRECT_URL = directUrl;
+  }
+
   const hasDbUrl = Boolean(process.env.DATABASE_URL);
 
   if (!hasDbUrl) {
