@@ -234,10 +234,31 @@ export async function executeDotCommand(
       // НАВИГАЦИЯ И ОСНОВНЫЕ
       // ------------------------------------------------------------
       case 'start': {
-        responseText =
-          `👋 <b>SerkoGram подключён к диалогу!</b>\n\n` +
-          `Все точечные команды (.) доступны для управления прямо в этой переписке.\n` +
-          `Напишите <code>.help</code> или <code>.commands</code> для списка возможностей.`;
+        if (ctx.isDirectBotChat) {
+          responseText =
+            `🟢 <b>SerkoGram</b>\n\n` +
+            `Добро пожаловать!\n\n` +
+            `Персональный архив Telegram-сообщений, медиа и истории изменений подключённых чатов.\n\n` +
+            `• Автоматическое сохранение сообщений\n` +
+            `• Архив удалённых и изменённых сообщений\n` +
+            `• Защищённое хранение медиафайлов\n` +
+            `• Быстрый поиск по переписке`;
+          const keyboard: any[] = [];
+          if (appUrl) {
+            keyboard.push([{ text: '📱 Открыть SerkoGram', web_app: { url: appUrl } }]);
+          }
+          keyboard.push(
+            [{ text: '🔗 Подключить Telegram', callback_data: 'connect' }],
+            [{ text: '📋 Каталог команд', callback_data: 'commands' }],
+            [{ text: '❓ FAQ', callback_data: 'faq' }]
+          );
+          customReplyMarkup = { inline_keyboard: keyboard };
+        } else {
+          responseText =
+            `👋 <b>SerkoGram подключён к диалогу!</b>\n\n` +
+            `Все точечные команды (.) доступны для управления прямо в этой переписке.\n` +
+            `Напишите <code>.help</code> или <code>.commands</code> для списка возможностей.`;
+        }
         break;
       }
 
@@ -735,7 +756,8 @@ export async function executeDotCommand(
           });
           responseText =
             `🔇 <b>Ограничение диалога активировано</b>\n\n` +
-            `Входящие сообщения собеседника будут автоматически удаляться на <b>${safeMins} мин.</b>\n` +
+            `Чат приглушён на стороне SerkoGram на <b>${safeMins} мин.</b> (автоответы и уведомления отключены).\n\n` +
+            `<i>Внимание: в самом Telegram чат не может быть замьючен через бота — используйте стандартную функцию Telegram «Уведомления → Выключить звук».</i>\n\n` +
             `Снять: <code>.mute off</code> или <code>.unmute</code>`;
           customReplyMarkup = {
             inline_keyboard: [

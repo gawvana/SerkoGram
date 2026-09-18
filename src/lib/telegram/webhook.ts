@@ -10,11 +10,14 @@ import {
   processEditedMessage,
   processDeletedMessages,
 } from '@/lib/services/message-service';
-import { getRealTelegramBusinessConnection, chatAutomation } from '@/lib/services/connection-service';
+import {
+  getRealTelegramBusinessConnection,
+  reconcileBusinessConnection,
+  chatAutomation,
+} from '@/lib/services/connection-service';
 import { downloadAndStoreMedia, extractTelegramMedia, type MediaSaveResult } from '@/lib/services/media-service';
 import { logAudit } from '@/lib/services/audit-service';
 import { parseBotCommand } from './parser';
-import { executeCommand } from './handlers';
 import { parseAnyCommand } from '@/lib/commands/parser';
 import { resolveCommandContext } from '@/lib/commands/context';
 import { executeDotCommand } from '@/lib/commands/executor';
@@ -135,6 +138,8 @@ async function handleBusinessConnection(update: Update): Promise<void> {
       create: {
         userId: user.id,
         telegramConnectionId: bc.id,
+        telegramUserId: BigInt(bc.user.id),
+        userChatId: BigInt(bc.user_chat_id),
         type: 'BUSINESS',
         connectionMode,
         status: 'ACTIVE',
@@ -147,6 +152,8 @@ async function handleBusinessConnection(update: Update): Promise<void> {
         connectedAt: new Date(bc.date * 1000),
       },
       update: {
+        telegramUserId: BigInt(bc.user.id),
+        userChatId: BigInt(bc.user_chat_id),
         connectionMode,
         status: 'ACTIVE',
         canReply,
@@ -253,45 +260,18 @@ async function handleBusinessMessage(msg: TgMessage, isEdited: boolean): Promise
     include: { user: true },
   });
 
-  // If local DB is missing connection record but Telegram confirms it is active, auto-upsert
-  if (!connection && realBc && realBc.is_enabled) {
-    const user = await prisma.user.upsert({
-      where: { telegramId: BigInt(realBc.user.id) },
-      create: {
-        telegramId: BigInt(realBc.user.id),
-        firstName: realBc.user.first_name,
-        lastName: realBc.user.last_name ?? null,
-        username: realBc.user.username ?? null,
-        isPremium: realBc.user.is_premium ?? false,
-      },
-      update: {
-        firstName: realBc.user.first_name,
-        lastName: realBc.user.last_name ?? null,
-        username: realBc.user.username ?? null,
-      },
-    });
-
-    connection = await prisma.businessConnection.upsert({
-      where: { telegramConnectionId: msg.business_connection_id },
-      create: {
-        userId: user.id,
-        telegramConnectionId: msg.business_connection_id,
-        type: 'BUSINESS',
-        status: 'ACTIVE',
-        canReply: Boolean(realBc.can_reply),
-        isEnabled: Boolean(realBc.is_enabled),
-        connectedAt: new Date(realBc.date * 1000),
-      },
-      update: {
-        status: 'ACTIVE',
-        canReply: Boolean(realBc.can_reply),
-        isEnabled: Boolean(realBc.is_enabled),
-      },
-      include: { user: true },
-    });
+  // If local DB is missing connection record, reconcile directly against Telegram Bot API
+  if (!connection) {
+    const reconciled = await reconcileBusinessConnection(msg.business_connection_id);
+    if (reconciled) {
+      connection = await prisma.businessConnection.findUnique({
+        where: { id: reconciled.id },
+        include: { user: true },
+      });
+    }
   }
 
-  if (!connection || connection.status !== 'ACTIVE') return;
+  if (!connection || !['ACTIVE', 'CONNECTED'].includes(connection.status) || !connection.isEnabled) return;
 
   // Check user settings
   const settings = await prisma.userSettings.findUnique({
@@ -473,7 +453,7 @@ async function handleEditedBusinessMessage(msg: TgMessage): Promise<void> {
     where: { telegramConnectionId: msg.business_connection_id },
     include: { user: true },
   });
-  if (!connection || connection.status !== 'ACTIVE') return;
+  if (!connection || !['ACTIVE', 'CONNECTED'].includes(connection.status) || !connection.isEnabled) return;
 
   const settings = await prisma.userSettings.findUnique({
     where: { userId: connection.userId },
@@ -523,7 +503,7 @@ async function handleDeletedBusinessMessages(update: Update): Promise<void> {
     where: { telegramConnectionId: del.business_connection_id },
     include: { user: true },
   });
-  if (!connection || connection.status !== 'ACTIVE') return;
+  if (!connection || !['ACTIVE', 'CONNECTED'].includes(connection.status) || !connection.isEnabled) return;
 
   const settings = await prisma.userSettings.findUnique({
     where: { userId: connection.userId },
@@ -559,19 +539,46 @@ async function handleDeletedBusinessMessages(update: Update): Promise<void> {
 // ============================================================
 
 async function handleBotMessage(msg: TgMessage): Promise<void> {
-  if (!msg.text) return;
+  if (!msg.text && !msg.caption) return;
 
   const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'SerkoGram_bot';
-  const parsed = parseAnyCommand(msg.text, {
-    allowedPrefixes: ['.', '/'],
-    currentBotUsername: botUsername,
-    chatId: msg.chat.id,
-    senderId: msg.from?.id,
-    replyToMessageId: msg.reply_to_message?.message_id,
+  const botId = Number(process.env.TELEGRAM_BOT_TOKEN?.split(':')[0] || '0');
+  if (botId > 0 && msg.from && msg.from.id === botId) {
+    return;
+  }
+
+  // Ensure user is created / tracked
+  let ownerUserId = '';
+  if (msg.from) {
+    const user = await prisma.user.upsert({
+      where: { telegramId: BigInt(msg.from.id) },
+      create: {
+        telegramId: BigInt(msg.from.id),
+        firstName: msg.from.first_name,
+        lastName: msg.from.last_name ?? null,
+        username: msg.from.username ?? null,
+      },
+      update: {
+        firstName: msg.from.first_name,
+        lastName: msg.from.last_name ?? null,
+        username: msg.from.username ?? null,
+      },
+    }).catch(() => null);
+    if (user) ownerUserId = user.id;
+  }
+
+  const cmdContext = resolveCommandContext({
+    msg,
+    chatId: `bot_${msg.chat.id}`,
+    telegramChatId: BigInt(msg.chat.id),
+    ownerTelegramId: msg.from ? BigInt(msg.from.id) : BigInt(0),
+    ownerUserId,
+    isDirectBotChat: true,
+    botUsername,
   });
 
-  if (parsed.isCommand) {
-    await executeCommand(msg, parsed as any);
+  if (cmdContext.isCommand) {
+    await executeDotCommand(cmdContext);
   } else if (msg.chat.type === 'private') {
     const bot = getBot();
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || '';

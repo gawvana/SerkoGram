@@ -1,5 +1,6 @@
 // SerkoGram Database Schema
 // PostgreSQL via Prisma ORM
+// Canonical Schema v2 strictly conforming to Telegram Bot API 10.3 Chat Automation Spec
 
 generator client {
   provider = "prisma-client-js"
@@ -15,15 +16,20 @@ datasource db {
 // ENUMS
 // ============================================================
 
-enum ConnectionType {
-  BUSINESS
-  CHAT_AUTOMATION
-}
-
 enum ConnectionStatus {
+  CONNECTED
   ACTIVE
   DISCONNECTED
+  PAUSED
   ERROR
+  WAITING_FOR_EVENT
+}
+
+enum MediaStatus {
+  PENDING
+  SAVED
+  UNAVAILABLE
+  FAILED
 }
 
 enum MessageType {
@@ -150,7 +156,6 @@ model User {
   settings          UserSettings?
   privacySettings   PrivacySettings?
   connections       BusinessConnection[]
-  telegramAccounts  TelegramAccount[]
   commandExecutions CommandExecution[]
   tickets           SupportTicket[]
   auditLogs         AuditLog[]
@@ -160,14 +165,14 @@ model User {
 }
 
 model UserSettings {
-  id                  String  @id @default(cuid())
-  userId              String  @unique @map("user_id")
-  autoSaveEnabled     Boolean @default(true) @map("auto_save_enabled")
-  saveMessages        Boolean @default(true) @map("save_messages")
-  saveMedia           Boolean @default(true) @map("save_media")
-  saveEdits           Boolean @default(true) @map("save_edits")
-  saveDeleted         Boolean @default(true) @map("save_deleted")
-  notificationsOn     Boolean @default(false) @map("notifications_on")
+  id                  String   @id @default(cuid())
+  userId              String   @unique @map("user_id")
+  autoSaveEnabled     Boolean  @default(true) @map("auto_save_enabled")
+  saveMessages        Boolean  @default(true) @map("save_messages")
+  saveMedia           Boolean  @default(true) @map("save_media")
+  saveEdits           Boolean  @default(true) @map("save_edits")
+  saveDeleted         Boolean  @default(true) @map("save_deleted")
+  notificationsOn     Boolean  @default(false) @map("notifications_on")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
@@ -189,32 +194,40 @@ model PrivacySettings {
 }
 
 // ============================================================
-// CONNECTIONS
+// CONNECTIONS (CANONICAL)
 // ============================================================
 
 model BusinessConnection {
-  id                    String           @id @default(cuid())
-  userId                String           @map("user_id")
-  telegramConnectionId  String           @unique @map("telegram_connection_id")
-  type                  ConnectionType   @default(BUSINESS)
-  connectionMode        String?          @default("AUTOMATION_CHAT") @map("connection_mode")
-  status                ConnectionStatus @default(ACTIVE)
-  canReply              Boolean          @default(false) @map("can_reply")
-  canReadMessages       Boolean          @default(true) @map("can_read_messages")
-  canDeleteSentMessages Boolean          @default(true) @map("can_delete_sent_messages")
-  canDeleteAllMessages  Boolean          @default(false) @map("can_delete_all_messages")
-  isEnabled             Boolean          @default(true) @map("is_enabled")
-  telegramPremium       Boolean?         @map("telegram_premium")
-  connectedAt           DateTime         @default(now()) @map("connected_at")
-  disconnectedAt        DateTime?        @map("disconnected_at")
-  createdAt             DateTime         @default(now()) @map("created_at")
-  updatedAt             DateTime         @updatedAt @map("updated_at")
+  id                   String           @id @default(cuid())
+  telegramConnectionId String           @unique @map("telegram_connection_id")
+  telegramUserId       BigInt           @default(0) @map("telegram_user_id")
+  userChatId           BigInt           @default(0) @map("user_chat_id")
+  botId                String           @default("") @map("bot_id")
+  type                 String?          @default("BUSINESS")
+  connectionMode       String?          @default("AUTOMATION_CHAT") @map("connection_mode")
+  isEnabled            Boolean          @default(true) @map("is_enabled")
+  status               ConnectionStatus @default(WAITING_FOR_EVENT)
+  rights               Json             @default("{}") // Raw BusinessBotRights snapshot
+  canReply             Boolean?         @default(true) @map("can_reply")
+  canReadMessages      Boolean?         @default(true) @map("can_read_messages")
+  canDeleteSentMessages Boolean?        @default(true) @map("can_delete_sent_messages")
+  canDeleteAllMessages Boolean?         @default(false) @map("can_delete_all_messages")
+  telegramPremium      Boolean?         @map("telegram_premium")
+  connectedAt          DateTime?        @map("connected_at")
+  disconnectedAt       DateTime?        @map("disconnected_at")
+  lastSeenAt           DateTime?        @map("last_seen_at")
+  lastEventAt          DateTime?        @map("last_event_at")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
 
-  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chats Chat[]
+  userId               String           @map("user_id")
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chats                Chat[]
+  archiveMessages      ArchiveMessage[]
 
-  @@index([userId])
+  @@index([telegramUserId])
   @@index([status])
+  @@index([userId])
   @@map("business_connections")
 }
 
@@ -223,24 +236,25 @@ model BusinessConnection {
 // ============================================================
 
 model Chat {
-  id                    String  @id @default(cuid())
-  telegramChatId        BigInt  @map("telegram_chat_id")
-  connectionId          String  @map("connection_id")
-  title                 String?
-  chatType              String  @default("private") @map("chat_type")
-  photoUrl              String? @map("photo_url")
-  lastMessageAt         DateTime? @map("last_message_at")
-  lastMessagePreview    String?   @map("last_message_preview")
-  totalMessages         Int     @default(0) @map("total_messages")
-  deletedMessages       Int     @default(0) @map("deleted_messages")
-  editedMessages        Int     @default(0) @map("edited_messages")
-  mediaCount            Int     @default(0) @map("media_count")
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
+  id                 String    @id @default(cuid())
+  telegramChatId     BigInt    @map("telegram_chat_id")
+  connectionId       String    @map("connection_id")
+  title              String?
+  chatType           String    @default("private") @map("chat_type")
+  photoUrl           String?   @map("photo_url")
+  lastMessageAt      DateTime? @map("last_message_at")
+  lastMessagePreview String?   @map("last_message_preview")
+  totalMessages      Int       @default(0) @map("total_messages")
+  deletedMessages    Int       @default(0) @map("deleted_messages")
+  editedMessages     Int       @default(0) @map("edited_messages")
+  mediaCount         Int       @default(0) @map("media_count")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  connection BusinessConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  members    ChatMember[]
-  messages   Message[]
+  connection      BusinessConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  members         ChatMember[]
+  messages        Message[]
+  archiveMessages ArchiveMessage[]
 
   @@unique([telegramChatId, connectionId])
   @@index([connectionId])
@@ -249,13 +263,13 @@ model Chat {
 }
 
 model ChatMember {
-  id             String  @id @default(cuid())
-  chatId         String  @map("chat_id")
-  telegramUserId BigInt  @map("telegram_user_id")
-  firstName      String  @map("first_name")
-  lastName       String? @map("last_name")
+  id             String   @id @default(cuid())
+  chatId         String   @map("chat_id")
+  telegramUserId BigInt   @map("telegram_user_id")
+  firstName      String   @map("first_name")
+  lastName       String?  @map("last_name")
   username       String?
-  photoUrl       String? @map("photo_url")
+  photoUrl       String?  @map("photo_url")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -267,36 +281,104 @@ model ChatMember {
 }
 
 // ============================================================
-// MESSAGES
+// ARCHIVE (CANONICAL §5)
+// ============================================================
+
+model ArchiveMessage {
+  id                   String             @id @default(cuid())
+  connectionId         String             @map("connection_id")
+  telegramChatId       BigInt             @map("telegram_chat_id")
+  telegramMessageId    BigInt             @map("telegram_message_id")
+  businessConnectionId String             @map("business_connection_id")
+  senderTelegramId     BigInt?            @map("sender_telegram_id")
+  senderName           String?            @map("sender_name")
+  senderUsername       String?            @map("sender_username")
+  isOutgoing           Boolean            @default(false) @map("is_outgoing")
+  messageType          String             @default("TEXT") @map("message_type")
+  text                 String?
+  caption              String?
+  entities             Json?
+  replyToMessageId     BigInt?            @map("reply_to_message_id")
+  forwardFromName      String?            @map("forward_from_name")
+  telegramDate         DateTime           @map("telegram_date")
+  editedAt             DateTime?          @map("edited_at")
+  deletedAt            DateTime?          @map("deleted_at")
+  editHistory          Json?              // Snapshot array of { text, caption, editedAt }
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  chatId               String?            @map("chat_id")
+  chat                 Chat?              @relation(fields: [chatId], references: [id], onDelete: SetNull)
+  connection           BusinessConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  media                MediaAttachment[]
+
+  @@unique([connectionId, telegramChatId, telegramMessageId])
+  @@index([connectionId])
+  @@index([telegramChatId])
+  @@index([editedAt])
+  @@index([deletedAt])
+  @@map("archive_messages")
+}
+
+model MediaAttachment {
+  id                   String         @id @default(cuid())
+  archiveMessageId     String         @map("archive_message_id")
+  telegramFileId       String         @map("telegram_file_id")
+  telegramFileUniqueId String         @map("telegram_file_unique_id")
+  storageKey           String?        @map("storage_key")
+  storageUrl           String?        @map("storage_url")
+  mimeType             String?        @map("mime_type")
+  fileSize             Int?           @map("file_size")
+  mediaType            String         @map("media_type")
+  width                Int?
+  height               Int?
+  duration             Int?
+  fileName             String?        @map("file_name")
+  status               MediaStatus    @default(PENDING)
+  errorCode            String?        @map("error_code")
+  errorMessage         String?        @map("error_message")
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+
+  archiveMessage ArchiveMessage @relation(fields: [archiveMessageId], references: [id], onDelete: Cascade)
+
+  @@index([archiveMessageId])
+  @@index([telegramFileUniqueId])
+  @@index([status])
+  @@map("media_attachments")
+}
+
+// ============================================================
+// LEGACY COMPATIBILITY MESSAGE MODELS (Scheduled for phase migration)
 // ============================================================
 
 model Message {
-  id                    String      @id @default(cuid())
-  chatId                String      @map("chat_id")
-  telegramMessageId     Int         @map("telegram_message_id")
-  businessConnectionId  String?     @map("business_connection_id")
-  senderTelegramId      BigInt?     @map("sender_telegram_id")
-  senderName            String?     @map("sender_name")
-  senderUsername        String?     @map("sender_username")
-  isOutgoing            Boolean     @default(false) @map("is_outgoing")
-  messageType           MessageType @default(TEXT) @map("message_type")
-  text                  String?
-  caption               String?
-  replyToMessageId      Int?        @map("reply_to_message_id")
-  forwardFromName       String?     @map("forward_from_name")
-  isEdited              Boolean     @default(false) @map("is_edited")
-  editedAt              DateTime?   @map("edited_at")
-  isDeleted             Boolean     @default(false) @map("is_deleted")
-  deletedAt             DateTime?   @map("deleted_at")
-  telegramDate          DateTime    @map("telegram_date")
-  rawData               Json?       @map("raw_data")
-  createdAt             DateTime    @default(now()) @map("created_at")
-  updatedAt             DateTime    @updatedAt @map("updated_at")
+  id                   String           @id @default(cuid())
+  chatId               String           @map("chat_id")
+  telegramMessageId    Int              @map("telegram_message_id")
+  businessConnectionId String?          @map("business_connection_id")
+  senderTelegramId     BigInt?          @map("sender_telegram_id")
+  senderName           String?          @map("sender_name")
+  senderUsername       String?          @map("sender_username")
+  isOutgoing           Boolean          @default(false) @map("is_outgoing")
+  messageType          MessageType      @default(TEXT) @map("message_type")
+  text                 String?
+  caption              String?
+  replyToMessageId     Int?             @map("reply_to_message_id")
+  forwardFromName      String?          @map("forward_from_name")
+  isEdited             Boolean          @default(false) @map("is_edited")
+  editedAt             DateTime?        @map("edited_at")
+  isDeleted            Boolean          @default(false) @map("is_deleted")
+  deletedAt            DateTime?        @map("deleted_at")
+  telegramDate         DateTime         @map("telegram_date")
+  rawData              Json?            @map("raw_data")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
 
-  chat      Chat             @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  versions  MessageVersion[]
-  media     MessageMedia[]
-  deletion  MessageDeletion?
+  chat     Chat             @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  versions MessageVersion[]
+  media    MessageMedia[]
+  deletion MessageDeletion?
 
   @@unique([chatId, telegramMessageId])
   @@index([chatId, telegramDate])
@@ -310,13 +392,13 @@ model Message {
 }
 
 model MessageVersion {
-  id         String   @id @default(cuid())
-  messageId  String   @map("message_id")
-  version    Int
-  text       String?
-  caption    String?
-  editedAt   DateTime @map("edited_at")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id        String   @id @default(cuid())
+  messageId String   @map("message_id")
+  version   Int
+  text      String?
+  caption   String?
+  editedAt  DateTime @map("edited_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
@@ -326,19 +408,19 @@ model MessageVersion {
 }
 
 model MessageMedia {
-  id               String  @id @default(cuid())
-  messageId        String  @map("message_id")
-  telegramFileId   String  @map("telegram_file_id")
-  fileUniqueId     String  @map("file_unique_id")
-  mediaType        String  @map("media_type")
-  fileName         String? @map("file_name")
-  mimeType         String? @map("mime_type")
-  fileSize         Int?    @map("file_size")
-  width            Int?
-  height           Int?
-  duration         Int?
-  storagePath      String? @map("storage_path")
-  storageUrl       String? @map("storage_url")
+  id                  String        @id @default(cuid())
+  messageId           String        @map("message_id")
+  telegramFileId      String        @map("telegram_file_id")
+  fileUniqueId        String        @map("file_unique_id")
+  mediaType           String        @map("media_type")
+  fileName            String?       @map("file_name")
+  mimeType            String?       @map("mime_type")
+  fileSize            Int?          @map("file_size")
+  width               Int?
+  height              Int?
+  duration            Int?
+  storagePath         String?       @map("storage_path")
+  storageUrl          String?       @map("storage_url")
   thumbnailPath       String?       @map("thumbnail_path")
   isDownloaded        Boolean       @default(false) @map("is_downloaded")
   isEphemeral         Boolean       @default(false) @map("is_ephemeral")
@@ -362,11 +444,11 @@ model MessageMedia {
 }
 
 model MessageDeletion {
-  id          String   @id @default(cuid())
-  messageId   String   @unique @map("message_id")
-  deletedAt   DateTime @map("deleted_at")
-  detectedAt  DateTime @default(now()) @map("detected_at")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id         String   @id @default(cuid())
+  messageId  String   @unique @map("message_id")
+  deletedAt  DateTime @map("deleted_at")
+  detectedAt DateTime @default(now()) @map("detected_at")
+  createdAt  DateTime @default(now()) @map("created_at")
 
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
@@ -374,30 +456,8 @@ model MessageDeletion {
 }
 
 // ============================================================
-// ACCOUNT AUTOMATION / CHAT AUTOMATION & COMMAND EXECUTIONS
+// COMMAND EXECUTIONS
 // ============================================================
-
-model TelegramAccount {
-  id               String           @id @default(cuid())
-  userId           String           @map("user_id")
-  telegramUserId   BigInt           @unique @map("telegram_user_id")
-  phoneNumber      String?          @map("phone_number")
-  firstName        String           @map("first_name")
-  lastName         String?          @map("last_name")
-  username         String?
-  sessionEncrypted String?          @map("session_encrypted")
-  status           ConnectionStatus @default(ACTIVE)
-  connectedAt      DateTime         @default(now()) @map("connected_at")
-  disconnectedAt   DateTime?        @map("disconnected_at")
-  createdAt        DateTime         @default(now()) @map("created_at")
-  updatedAt        DateTime         @updatedAt @map("updated_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([status])
-  @@map("telegram_accounts")
-}
 
 model CommandExecution {
   id                String                 @id @default(cuid())
@@ -428,14 +488,14 @@ model CommandExecution {
 // ============================================================
 
 model SupportTicket {
-  id         String         @id @default(cuid())
-  userId     String         @map("user_id")
-  category   TicketCategory
-  subject    String
-  status     TicketStatus   @default(OPEN)
-  createdAt  DateTime       @default(now()) @map("created_at")
-  updatedAt  DateTime       @updatedAt @map("updated_at")
-  closedAt   DateTime?      @map("closed_at")
+  id        String         @id @default(cuid())
+  userId    String         @map("user_id")
+  category  TicketCategory
+  subject   String
+  status    TicketStatus   @default(OPEN)
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+  closedAt  DateTime?      @map("closed_at")
 
   user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages SupportMessage[]
@@ -479,8 +539,8 @@ model AuditLog {
 }
 
 model ProcessedUpdate {
-  id       String   @id @default(cuid())
-  updateId Int      @unique @map("update_id")
+  id          String   @id @default(cuid())
+  updateId    Int      @unique @map("update_id")
   processedAt DateTime @default(now()) @map("processed_at")
 
   @@map("processed_updates")
@@ -521,18 +581,18 @@ model OwnerNotification {
 }
 
 model ChatAutomationSettings {
-  id                 String   @id @default(cuid())
-  chatId             String   @unique // Internal DB chat id
-  telegramChatId     BigInt
-  autoTranslateLang  String?  // null = disabled, "en"/"ru"/etc = enabled
-  muteEnabled        Boolean  @default(false)
-  muteUntil          DateTime?
-  panicEnabled       Boolean  @default(false)
-  autoTypingEnabled  Boolean  @default(false)
-  warningThreshold   Int      @default(3)
-  moderationEnabled  Boolean  @default(false)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String    @id @default(cuid())
+  chatId            String    @unique // Internal DB chat id
+  telegramChatId    BigInt
+  autoTranslateLang String? // null = disabled, "en"/"ru"/etc = enabled
+  muteEnabled       Boolean   @default(false)
+  muteUntil         DateTime?
+  panicEnabled      Boolean   @default(false)
+  autoTypingEnabled Boolean   @default(false)
+  warningThreshold  Int       @default(3)
+  moderationEnabled Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 
 model ChatWarning {
@@ -549,13 +609,13 @@ model ChatWarning {
 
 model ScheduledJob {
   id                   String   @id @default(cuid())
-  type                 String   // "TIMER", "REMINDER"
+  type                 String // "TIMER", "REMINDER"
   chatId               String   @map("chat_id")
   telegramChatId       BigInt   @map("telegram_chat_id")
   businessConnectionId String?  @map("business_connection_id")
   userId               String?  @map("user_id")
   targetMessageId      Int?     @map("target_message_id")
-  payload              String?  // JSON stringified payload
+  payload              String? // JSON stringified payload
   executeAt            DateTime @map("execute_at")
   status               String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED
   attempts             Int      @default(0)

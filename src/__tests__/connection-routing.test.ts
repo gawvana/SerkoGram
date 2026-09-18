@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { processUpdate } from '@/lib/telegram/webhook';
 import { prisma } from '@/lib/db';
-import type { Update } from '@/lib/telegram/types';
+type Update = any;
 
 describe('Connection Routing & Premium Detection', () => {
   beforeEach(() => {

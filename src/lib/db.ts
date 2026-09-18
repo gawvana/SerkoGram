@@ -46,16 +46,33 @@ class MemoryModel {
         continue;
       }
 
-      if (key === 'status' && typeof val === 'object' && val !== null) {
+      if (typeof val === 'object' && val !== null && !Array.isArray(val) && !(val instanceof Date)) {
         if ('in' in (val as any) && Array.isArray((val as any).in)) {
-          if (!(val as any).in.includes(item.status)) return false;
+          const itemVal = item[key];
+          const hasMatch = (val as any).in.some((candidate: any) =>
+            typeof candidate === 'bigint' || typeof itemVal === 'bigint'
+              ? String(candidate) === String(itemVal)
+              : candidate === itemVal
+          );
+          if (!hasMatch) return false;
+          continue;
         }
-        continue;
+        if ('not' in (val as any)) {
+          const notVal = (val as any).not;
+          if (typeof notVal === 'bigint' || typeof item[key] === 'bigint') {
+            if (String(item[key]) === String(notVal)) return false;
+          } else if (item[key] === notVal) {
+            return false;
+          }
+          continue;
+        }
       }
 
-      // Exact match (support BigInt loose equality)
+      // Exact match (support BigInt loose equality and null/undefined equivalence)
       if (typeof val === 'bigint' || typeof item[key] === 'bigint') {
         if (String(item[key]) !== String(val)) return false;
+      } else if (val === null) {
+        if (item[key] !== null && item[key] !== undefined) return false;
       } else if (item[key] !== val) {
         return false;
       }
